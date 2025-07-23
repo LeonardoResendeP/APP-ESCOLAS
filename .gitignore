@@ -1,0 +1,10 @@
+# Ignorar arquivos de dados grandes
+data/
+data\
+C:\Users\Pichau\OneDrive - EBAE - Empresa Brasileira de Avaliações Educacionais\APP ESCOLAS\Projeto APP Escolas\data\
+C:\Users\Pichau\OneDrive - EBAE - Empresa Brasileira de Avaliações Educacionais\APP ESCOLAS\Projeto APP Escolas\data
+# Ignorar arquivos de configuração local do RStudio
+.Rproj.user
+.Rhistory
+.RData
+.Ruserdata
