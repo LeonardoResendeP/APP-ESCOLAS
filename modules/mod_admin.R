@@ -40,7 +40,6 @@ mod_admin_ui <- function(id) {
                )
       ),
       
-      # <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<< NOVA ABA <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
       tabPanel("Gestão de Escolas",
                fluidRow(
                  column(6,
@@ -56,7 +55,6 @@ mod_admin_ui <- function(id) {
                  )
                )
       )
-      # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> FIM DA NOVA ABA >>>>>>>>>>>>>>>>>>>>>>>>>>>>>
     )
   )
 }
@@ -66,11 +64,12 @@ mod_admin_server <- function(id) {
   moduleServer(id, function(input, output, session) {
     ns <- session$ns
     
-    source("utils/admin_utils.R", local = TRUE)
+    # Carrega apenas o script de pré-processamento, pois as funções de DB já estão no ambiente global
     source("utils/preprocess_utils.R", local = TRUE)
     
     # --- Lógica de Cadastro ---
     
+    # Reativo para buscar a lista de escolas da base de dados externa (não do nosso DB)
     escolas_base <- reactive({
       nomes <- readRDS("data/escolas_privadas_nomelista.rds") %>%
         mutate(CO_ENTIDADE = as.character(CO_ENTIDADE))
@@ -92,6 +91,7 @@ mod_admin_server <- function(id) {
         arrange(NO_ENTIDADE)
     })
     
+    # Atualiza o seletor de busca de escolas
     observe({
       updateSelectizeInput(
         session, "nome_escola_busca",
@@ -100,6 +100,7 @@ mod_admin_server <- function(id) {
       )
     })
     
+    # Preenche os campos quando uma escola é selecionada
     observeEvent(input$nome_escola_busca, {
       req(input$nome_escola_busca)
       
@@ -119,19 +120,23 @@ mod_admin_server <- function(id) {
       })
     })
     
+    # Lógica do botão de cadastrar
     observeEvent(input$btn_add_escola, {
       req(input$codinep, input$nome_escola_busca, input$user_escola, input$senha_escola)
       
       tryCatch({
-        save_escola(
+        # Usa a nova função para salvar no banco de dados SQLite
+        save_escola_to_db(
           codinep = input$codinep,
           nome = input$nome_escola_busca,
           user = input$user_escola,
           pass = input$senha_escola
         )
         
-        dados_cadastrados(get_escolas()) # Atualiza a reatividade
+        # Atualiza a tabela de escolas cadastradas
+        dados_cadastrados(get_escolas_from_db())
         
+        # Lógica do pré-processamento (continua a mesma)
         usar_geo_manual <- input$mostrar_geo_manual == "TRUE" &&
           !is.na(input$lat_manual) &&
           !is.na(input$lon_manual)
@@ -146,34 +151,43 @@ mod_admin_server <- function(id) {
         }, error = function(e_proc) {
           output$status_cadastro <- renderText(paste("⚠️ Escola cadastrada, mas houve erro ao gerar os dados:\n", e_proc$message))
         })
+        
       }, error = function(e_main) {
+        # Captura erros de violação de chave primária (usuário/escola já existe)
         output$status_cadastro <- renderText(paste("❌ Erro ao cadastrar escola:\n", e_main$message))
       })
     })
     
     # --- Lógica de Gestão e Exclusão ---
     
-    dados_cadastrados <- reactiveVal(get_escolas())
+    # Valor reativo para armazenar as escolas cadastradas no nosso DB
+    dados_cadastrados <- reactiveVal(get_escolas_from_db())
     
+    # Renderiza a tabela de escolas
     output$tabela_escolas <- DT::renderDataTable({
       DT::datatable(dados_cadastrados(), options = list(pageLength = 5))
     })
     
+    # Renderiza o seletor de escolas para exclusão
     output$seletor_escola_excluir_ui <- renderUI({
       escolas <- dados_cadastrados()
-      # Cria uma lista nomeada: o texto é o nome da escola, o valor é o codinep
       choices_list <- setNames(escolas$codinep, escolas$nome)
       selectInput(ns("escola_a_excluir"), "Selecione a escola para excluir", choices = choices_list)
     })
     
+    # Lógica do botão de excluir
     observeEvent(input$btn_delete_escola, {
       req(input$escola_a_excluir)
       
       cod_a_excluir <- input$escola_a_excluir
       
       tryCatch({
-        delete_escola(cod_a_excluir)
-        dados_cadastrados(get_escolas()) # Atualiza a reatividade após a exclusão
+        # Usa a nova função para deletar do banco de dados SQLite
+        delete_escola_from_db(cod_a_excluir)
+        
+        # Atualiza a tabela de escolas cadastradas
+        dados_cadastrados(get_escolas_from_db())
+        
         output$status_exclusao <- renderText(paste("✅ Escola com Cód. INEP", cod_a_excluir, "foi excluída com sucesso."))
       }, error = function(e) {
         output$status_exclusao <- renderText(paste("❌ Erro ao excluir escola:\n", e$message))
@@ -182,4 +196,3 @@ mod_admin_server <- function(id) {
     
   })
 }
-
