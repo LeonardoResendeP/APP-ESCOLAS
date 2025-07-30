@@ -17,7 +17,6 @@ mod_admin_ui <- function(id) {
                         h4("Cadastrar Nova Escola"),
                         selectizeInput(ns("nome_escola_busca"), "Buscar escola (Nome - Município - INEP)", choices = NULL, options = list(placeholder = 'Digite para buscar...')),
                         
-                        # Painel que só aparece se a escola não tiver município definido
                         shinyjs::hidden(
                           div(id = ns("manual_muni_panel"),
                               selectizeInput(ns("muni_manual_busca"), "Município não encontrado. Por favor, selecione o município correto:", choices = NULL)
@@ -76,7 +75,6 @@ mod_admin_server <- function(id) {
     
     # --- Lógica de Cadastro ---
     
-    # Carrega a base de geolocalização uma vez
     geo_data <- reactive({
       geo <- readRDS("data/escolas_geo_com_empty_flag.rds")
       if ("sf" %in% class(geo)) {
@@ -85,25 +83,18 @@ mod_admin_server <- function(id) {
       geo %>% mutate(code_school = as.character(code_school))
     })
     
-    # <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<< MUDANÇA IMPORTANTE <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
-    # Prepara a lista de municípios a partir do ficheiro definitivo
     lista_municipios <- reactive({
-      # Lê o dataframe completo que criámos
-      municipios_df <- readRDS("data/municipios_br.rds")
-      # Cria uma lista nomeada: o que o utilizador vê é "Alecrim - RS", 
-      # o valor que o R recebe é "Alecrim"
-      setNames(municipios_df$name_muni, municipios_df$display_name)
+      municipios_df <- readRDS("data/municipios_lookup.rds")
+      setNames(municipios_df$nome_municipio, municipios_df$display_name)
     })
     
-    # Atualiza o seletor de município manual com a lista completa
     observe({
       updateSelectizeInput(session, "muni_manual_busca", choices = lista_municipios(), server = TRUE)
     })
-    # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> FIM DA MUDANÇA >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
     
     escolas_base <- reactive({
-      nomes <- readRDS("data/escolas_privadas_nomelista.rds") %>%
-        mutate(CO_ENTIDADE = as.character(CO_ENTIDADE))
+      # Carrega a nova lista de escolas ENRIQUECIDA
+      nomes <- readRDS("data/escolas_privadas_nomelista.rds")
       
       geo <- geo_data()
       
@@ -116,9 +107,16 @@ mod_admin_server <- function(id) {
       nomes_limpos %>%
         left_join(geo, by = c("CO_ENTIDADE" = "code_school")) %>%
         mutate(
-          name_muni = ifelse(is.na(name_muni), "Município Desconhecido", name_muni),
-          name_muni = iconv(name_muni, to = "latin1", sub = " "),
-          display_name = paste0(NO_ENTIDADE, " - ", name_muni, " (", CO_ENTIDADE, ")"),
+          # <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<< LÓGICA ATUALIZADA <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+          # Usa coalesce para pegar o primeiro nome de município não-nulo:
+          # 1. Tenta usar o nome do ficheiro geográfico (name_muni)
+          # 2. Se for nulo, usa o nome do ficheiro do censo (nome_municipio)
+          # 3. Se ambos forem nulos, define como "Município Desconhecido"
+          final_muni_name = coalesce(name_muni, nome_municipio, "Município Desconhecido"),
+          final_muni_name = iconv(final_muni_name, to = "latin1", sub = " "),
+          # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> FIM DA ATUALIZAÇÃO >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+          
+          display_name = paste0(NO_ENTIDADE, " - ", final_muni_name, " (", CO_ENTIDADE, ")"),
           empty_geo = ifelse(is.na(empty_geo), TRUE, empty_geo)
         ) %>%
         filter(!is.na(NO_ENTIDADE)) %>%
@@ -143,7 +141,7 @@ mod_admin_server <- function(id) {
       updateTextInput(session, "codinep", value = escola$CO_ENTIDADE)
       updateTextInput(session, "mostrar_geo_manual", value = ifelse(isTRUE(escola$empty_geo), "TRUE", "FALSE"))
       
-      if (escola$name_muni == "Município Desconhecido") {
+      if (escola$final_muni_name == "Município Desconhecido") {
         shinyjs::show("manual_muni_panel")
       } else {
         shinyjs::hide("manual_muni_panel")
@@ -168,9 +166,8 @@ mod_admin_server <- function(id) {
       nome_real_escola <- escola_selecionada$NO_ENTIDADE
       
       muni_manual <- NULL
-      if (escola_selecionada$name_muni == "Município Desconhecido") {
+      if (escola_selecionada$final_muni_name == "Município Desconhecido") {
         req(input$muni_manual_busca, message = "Por favor, selecione um município para a escola.")
-        # O valor recebido já é apenas o nome do município, sem o estado
         muni_manual <- input$muni_manual_busca
       }
       
