@@ -2,7 +2,7 @@
 escolas_raw <- read.csv("data/microdados_ed_basica_2024.csv", sep = ";")
 
 escolas_privadas <- escolas_raw %>%
-  filter(TP_DEPENDENCIA == 4) %>%  # Dependência administrativa: 4 = privada
+  #filter(TP_DEPENDENCIA == 4) %>%  # Dependência administrativa: 4 = privada
   distinct(CO_ENTIDADE, NO_ENTIDADE) %>%
   mutate(CO_ENTIDADE = as.character(CO_ENTIDADE)) %>%
   arrange(NO_ENTIDADE)
