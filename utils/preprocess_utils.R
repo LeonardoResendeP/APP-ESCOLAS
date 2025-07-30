@@ -1,4 +1,76 @@
-# preprocessar_escola.R
+# --- FUNÇÕES AUXILIARES DE BUSCA DE DADOS ---
+
+# <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<< NOVA FUNÇÃO INTEGRADA <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+# Função movida do script de teste para buscar dados de infraestrutura.
+fetch_infra_data <- function(codigos_inep, id_municipio, ano, bq_connection) {
+  
+  cat("--- Buscando dados de infraestrutura para o ano:", ano, "---\n")
+  
+  # Query para buscar os indicadores de infraestrutura para escolas específicas.
+  query_infra <- glue::glue_sql("
+    SELECT
+      CAST(id_escola AS STRING) AS id_escola,
+      COALESCE(agua_potavel, 0) AS essencial_agua_potavel,
+      COALESCE(biblioteca, 0) AS essencial_biblioteca,
+      COALESCE(laboratorio_informatica, 0) AS essencial_lab_informatica,
+      COALESCE(laboratorio_ciencias, 0) AS essencial_lab_ciencias,
+      COALESCE(quadra_esportes, 0) AS essencial_quadra_esportes,
+      COALESCE(dependencia_pne, 0) AS essencial_acessibilidade_pne,
+      COALESCE(refeitorio, 0) AS essencial_refeitorio,
+      COALESCE(area_verde, 0) AS lazer_area_verde,
+      COALESCE(parque_infantil, 0) AS lazer_parque_infantil,
+      COALESCE(quadra_esportes_coberta, 0) AS lazer_quadra_coberta,
+      COALESCE(internet, 0) AS tec_internet_geral,
+      COALESCE(banda_larga, 0) AS tec_banda_larga,
+      COALESCE(internet_alunos, 0) AS tec_internet_para_alunos,
+      COALESCE(equipamento_lousa_digital, 0) AS tec_lousa_digital,
+      (COALESCE(quantidade_desktop_aluno, 0) + COALESCE(quantidade_computador_portatil_aluno, 0) + COALESCE(quantidade_tablet_aluno, 0)) AS tec_total_dispositivos_aluno,
+      COALESCE(profissional_psicologo, 0) AS apoio_psicologo,
+      COALESCE(profissional_bibliotecario, 0) AS apoio_bibliotecario
+    FROM `basedosdados.br_inep_censo_escolar.escola` 
+    WHERE ano = {ano} AND CAST(id_escola AS STRING) IN ({codigos_inep*})
+  ", .con = bq_connection)
+  
+  dados_escolas <- tryCatch(dbGetQuery(bq_connection, query_infra), error = function(e) {
+    cat("ERRO ao buscar dados de infraestrutura para escolas:", e$message, "\n"); return(NULL)
+  })
+  
+  # Query para a média municipal dos mesmos indicadores.
+  query_media_municipio <- glue::glue_sql("
+    SELECT
+      'Média Municipal' AS id_escola,
+      AVG(CAST(COALESCE(agua_potavel, 0) AS INT64)) AS essencial_agua_potavel,
+      AVG(CAST(COALESCE(biblioteca, 0) AS INT64)) AS essencial_biblioteca,
+      AVG(CAST(COALESCE(laboratorio_informatica, 0) AS INT64)) AS essencial_lab_informatica,
+      AVG(CAST(COALESCE(laboratorio_ciencias, 0) AS INT64)) AS essencial_lab_ciencias,
+      AVG(CAST(COALESCE(quadra_esportes, 0) AS INT64)) AS essencial_quadra_esportes,
+      AVG(CAST(COALESCE(dependencia_pne, 0) AS INT64)) AS essencial_acessibilidade_pne,
+      AVG(CAST(COALESCE(refeitorio, 0) AS INT64)) AS essencial_refeitorio,
+      AVG(CAST(COALESCE(area_verde, 0) AS INT64)) AS lazer_area_verde,
+      AVG(CAST(COALESCE(parque_infantil, 0) AS INT64)) AS lazer_parque_infantil,
+      AVG(CAST(COALESCE(quadra_esportes_coberta, 0) AS INT64)) AS lazer_quadra_coberta,
+      AVG(CAST(COALESCE(internet, 0) AS INT64)) AS tec_internet_geral,
+      AVG(CAST(COALESCE(banda_larga, 0) AS INT64)) AS tec_banda_larga,
+      AVG(CAST(COALESCE(internet_alunos, 0) AS INT64)) AS tec_internet_para_alunos,
+      AVG(CAST(COALESCE(equipamento_lousa_digital, 0) AS INT64)) AS tec_lousa_digital,
+      AVG(COALESCE(quantidade_desktop_aluno, 0) + COALESCE(quantidade_computador_portatil_aluno, 0) + COALESCE(quantidade_tablet_aluno, 0)) AS tec_total_dispositivos_aluno,
+      AVG(CAST(COALESCE(profissional_psicologo, 0) AS INT64)) AS apoio_psicologo,
+      AVG(CAST(COALESCE(profissional_bibliotecario, 0) AS INT64)) AS apoio_bibliotecario
+    FROM `basedosdados.br_inep_censo_escolar.escola`
+    WHERE ano = {ano} AND id_municipio = {id_municipio}
+  ", .con = bq_connection)
+  
+  media_municipio <- tryCatch(dbGetQuery(bq_connection, query_media_municipio), error = function(e) {
+    cat("ERRO ao buscar a média de infraestrutura do município:", e$message, "\n"); return(NULL)
+  })
+  
+  # Combina os resultados e retorna um único dataframe.
+  return(bind_rows(dados_escolas, media_municipio))
+}
+# >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> FIM DA NOVA FUNÇÃO >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+
+
+# --- FUNÇÃO PRINCIPAL DE PRÉ-PROCESSAMENTO ---
 preprocessar_escola <- function(codinep, lat = NULL, lon = NULL, nome_muni_manual = NULL) {
   # Carrega as bibliotecas necessárias
   suppressMessages({
@@ -9,6 +81,10 @@ preprocessar_escola <- function(codinep, lat = NULL, lon = NULL, nome_muni_manua
   codinep <- as.character(codinep)
   cat("\n\U0001F504 Iniciando processamento da escola:", codinep, "\n")
   
+  # Define os anos de referência para as buscas
+  anos_matricula <- c(2023,2024)
+  ano_infra <- 2024 # Usando o ano que você definiu
+  
   # Configura e conecta ao BigQuery
   set_billing_id("able-study-331220")
   cat("\U0001F4F1 Conectando ao BigQuery...\n")
@@ -18,6 +94,7 @@ preprocessar_escola <- function(codinep, lat = NULL, lon = NULL, nome_muni_manua
     dataset = "br_inep_censo_escolar",
     billing = "able-study-331220"
   )
+  on.exit(dbDisconnect(con)) # Garante que a conexão seja fechada no final
   
   cat("\U0001F4E5 Buscando dados da escola principal...\n")
   
@@ -31,7 +108,7 @@ preprocessar_escola <- function(codinep, lat = NULL, lon = NULL, nome_muni_manua
   nome_escola <- nomes_all %>% dplyr::filter(CO_ENTIDADE == codinep) %>% dplyr::pull(NO_ENTIDADE) %>% first()
   if (is.na(nome_escola)) nome_escola <- "N/D"
   
-  cat("\U0001F30E Verificando geolocalização...\n")
+  cat("\U0001F30E Verificando geolocalização e concorrentes...\n")
   
   if (!is.null(nome_muni_manual) && nzchar(nome_muni_manual)) {
     nome_muni <- nome_muni_manual
@@ -57,22 +134,15 @@ preprocessar_escola <- function(codinep, lat = NULL, lon = NULL, nome_muni_manua
     if(is.na(nome_muni)) stop("Não foi possível determinar o município da escola. Por favor, selecione manualmente.")
   }
   
-  cat("\U0001F680 Otimização: Buscando 5 concorrentes mais próximos localmente...\n")
-  
   concorrentes_locais <- geo_all_df %>%
     dplyr::filter(name_muni == nome_muni,
                   code_school != codinep)
   
-  # <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<< CORREÇÃO IMPORTANTE <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
-  # Junta com os nomes das escolas ANTES de decidir como ordenar e fatiar.
-  # Isto garante que a coluna NO_ENTIDADE esteja sempre disponível.
   concorrentes_com_nomes <- concorrentes_locais %>%
     dplyr::left_join(nomes_all, by = c("code_school" = "CO_ENTIDADE"))
   
-  # Apenas calcula a distância se houver lat/lon para a escola principal E concorrentes com geo
   if (nrow(concorrentes_com_nomes %>% filter(!is.na(latitude), !is.na(longitude))) > 0 && !is.na(lat) && !is.na(lon)) {
     concorrentes_finais <- concorrentes_com_nomes %>%
-      # Filtra apenas os que têm geo para o cálculo
       filter(!is.na(latitude), !is.na(longitude)) %>%
       dplyr::mutate(dist_metros = distHaversine(
         matrix(c(lon, lat), nrow = 1),
@@ -81,17 +151,15 @@ preprocessar_escola <- function(codinep, lat = NULL, lon = NULL, nome_muni_manua
       dplyr::arrange(dist_metros) %>%
       dplyr::slice(1:5)
   } else {
-    # Se não houver geo, apenas ordena alfabeticamente
     concorrentes_finais <- concorrentes_com_nomes %>%
       dplyr::arrange(NO_ENTIDADE) %>%
       dplyr::slice(1:5) %>%
       mutate(dist_metros = NA)
   }
-  # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> FIM DA CORREÇÃO >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
   
   ids_concorrentes_proximos <- concorrentes_finais$code_school
   
-  cat("\U0001F4E5 Buscando dados no BigQuery apenas para as escolas selecionadas...\n")
+  cat("\U0001F4E5 Buscando dados no BigQuery...\n")
   
   todos_os_ids <- c(codinep, ids_concorrentes_proximos)
   
@@ -99,25 +167,18 @@ preprocessar_escola <- function(codinep, lat = NULL, lon = NULL, nome_muni_manua
     stop("Não foi possível gerar uma lista de IDs de escolas para a consulta.")
   }
   
-  query_otimizada <- glue::glue_sql(
+  query_matriculas <- glue::glue_sql(
     "SELECT
-     ano,
-     CAST(id_escola AS STRING) AS id_escola,
-     CAST(id_municipio AS STRING) AS id_municipio,
-     COALESCE(quantidade_matricula_infantil_creche, 0) + 
-     COALESCE(quantidade_matricula_infantil_pre_escola, 0) AS mat_infantil,
-     COALESCE(quantidade_matricula_fundamental_anos_iniciais, 0) + 
-     COALESCE(quantidade_matricula_fundamental_anos_finais, 0) AS mat_fundamental,
-     COALESCE(quantidade_matricula_medio, 0) AS mat_medio,
-     COALESCE(quantidade_matricula_eja, 0) AS mat_eja,
-     COALESCE(quantidade_matricula_profissional, 0) AS mat_profissional
+     ano, CAST(id_escola AS STRING) AS id_escola, CAST(id_municipio AS STRING) AS id_municipio,
+     COALESCE(quantidade_matricula_infantil_creche, 0) + COALESCE(quantidade_matricula_infantil_pre_escola, 0) AS mat_infantil,
+     COALESCE(quantidade_matricula_fundamental_anos_iniciais, 0) + COALESCE(quantidade_matricula_fundamental_anos_finais, 0) AS mat_fundamental,
+     COALESCE(quantidade_matricula_medio, 0) AS mat_medio
    FROM `basedosdados.br_inep_censo_escolar.escola`
-   WHERE CAST(id_escola AS STRING) IN ({todos_os_ids*}) 
-   AND ano IN (2022, 2023)",
+   WHERE CAST(id_escola AS STRING) IN ({todos_os_ids*}) AND ano IN ({anos_matricula*})",
     .con = con
   )
   
-  df_escolas_selecionadas <- dbGetQuery(con, query_otimizada)
+  df_escolas_selecionadas <- dbGetQuery(con, query_matriculas)
   
   cat("\U0001F4CA Processando e estruturando os resultados...\n")
   
@@ -133,16 +194,16 @@ preprocessar_escola <- function(codinep, lat = NULL, lon = NULL, nome_muni_manua
     }
     if(is.na(id_muni_bq)) stop("Não foi possível obter o ID do município.")
     
-    make_bloco_matriculas <- function(df) {
+    make_bloco_matriculas <- function(df, anos) {
       if (nrow(df) == 0) return(list())
       df_wide <- df %>%
         dplyr::group_by(ano) %>%
         dplyr::summarise(across(starts_with("mat_"), \(x) sum(x, na.rm = TRUE)), .groups = "drop") %>%
         tidyr::pivot_wider(names_from = ano, values_from = starts_with("mat_"))
-      segmentos <- c("mat_infantil", "mat_fundamental", "mat_medio", "mat_eja", "mat_profissional")
+      segmentos <- c("mat_infantil", "mat_fundamental", "mat_medio")
       blocos <- list()
       for (seg in segmentos) {
-        v1_col <- paste0(seg, "_2022"); v2_col <- paste0(seg, "_2023")
+        v1_col <- paste0(seg, "_", anos[1]); v2_col <- paste0(seg, "_", anos[2])
         v1 <- if(v1_col %in% names(df_wide)) df_wide[[v1_col]][1] else 0
         v2 <- if(v2_col %in% names(df_wide)) df_wide[[v2_col]][1] else 0
         v1 <- ifelse(is.na(v1), 0, v1); v2 <- ifelse(is.na(v2), 0, v2)
@@ -154,28 +215,34 @@ preprocessar_escola <- function(codinep, lat = NULL, lon = NULL, nome_muni_manua
       blocos
     }
     
-    dados_propria <- make_bloco_matriculas(df_escola_principal)
-    dados_concorrentes <- make_bloco_matriculas(df_concorrentes)
+    dados_propria <- make_bloco_matriculas(df_escola_principal, anos_matricula)
+    dados_concorrentes <- make_bloco_matriculas(df_concorrentes, anos_matricula)
     
-    cat("\U0001F4C8 Buscando dados de mercado para o município...\n")
     query_mercado <- glue::glue_sql("
       SELECT ano,
         COALESCE(SUM(quantidade_matricula_infantil_creche), 0) + COALESCE(SUM(quantidade_matricula_infantil_pre_escola), 0) AS mat_infantil,
         COALESCE(SUM(quantidade_matricula_fundamental_anos_iniciais), 0) + COALESCE(SUM(quantidade_matricula_fundamental_anos_finais), 0) AS mat_fundamental,
-        COALESCE(SUM(quantidade_matricula_medio), 0) AS mat_medio,
-        COALESCE(SUM(quantidade_matricula_eja), 0) AS mat_eja,
-        COALESCE(SUM(quantidade_matricula_profissional), 0) AS mat_profissional
+        COALESCE(SUM(quantidade_matricula_medio), 0) AS mat_medio
       FROM `basedosdados.br_inep_censo_escolar.escola`
-      WHERE CAST(id_municipio AS STRING) = {id_muni_bq} AND ano IN (2022, 2023)
+      WHERE CAST(id_municipio AS STRING) = {id_muni_bq} AND ano IN ({anos_matricula*})
       GROUP BY ano
     ", .con = con)
     
     dados_mercado <- dbGetQuery(con, query_mercado)
-    dados_mercado_municipio <- make_bloco_matriculas(dados_mercado)
+    dados_mercado_municipio <- make_bloco_matriculas(dados_mercado, anos_matricula)
     
-    # <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<< CORREÇÃO IMPORTANTE <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
-    # O join com 'nomes_all' foi removido daqui porque já foi feito antes,
-    # garantindo que 'concorrentes_finais' já tem todas as colunas necessárias.
+    # <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<< CHAMADA DA NOVA FUNÇÃO <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+    # Busca os dados de infraestrutura usando a função auxiliar.
+    dados_infraestrutura <- fetch_infra_data(
+      codigos_inep = todos_os_ids,
+      id_municipio = id_muni_bq,
+      ano = ano_infra,
+      bq_connection = con
+    )
+    # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> FIM DA CHAMADA >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+    
+    # <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<< RESULTADO FINAL ENRIQUECIDO <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+    # Adiciona os novos dataframes à lista de resultados que será salva.
     resultado <- list(
       id_escola = codinep, nome_escola = nome_escola, id_municipio = id_muni_bq,
       nome_municipio = nome_muni, latitude = lat, longitude = lon,
@@ -183,9 +250,12 @@ preprocessar_escola <- function(codinep, lat = NULL, lon = NULL, nome_muni_manua
         dplyr::select(id_escola = code_school, nome_escola = NO_ENTIDADE, latitude, longitude, dist_metros),
       dados_propria_escola = dados_propria,
       dados_concorrentes_proximos = dados_concorrentes,
-      dados_mercado_municipio = dados_mercado_municipio
+      dados_mercado_municipio = dados_mercado_municipio,
+      # Novos dados adicionados aqui:
+      dados_infraestrutura = dados_infraestrutura,
+      data_extracao = Sys.time() # Boa prática para saber quando os dados foram gerados
     )
-    # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> FIM DA CORREÇÃO >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+    # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> FIM DO ENRIQUECIMENTO >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
     
     dir.create("data/escolas", recursive = TRUE, showWarnings = FALSE)
     path_out <- file.path("data", "escolas", paste0(codinep, ".rds"))
