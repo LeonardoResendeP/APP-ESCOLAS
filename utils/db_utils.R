@@ -55,6 +55,20 @@ db_init <- function() {
     ")
     cat("Tabela 'escolas' criada.\n")
   }
+  
+  # <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<< NOVA TABELA PARA CONCORRENTES <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+  # Cria a tabela 'escola_concorrentes' para armazenar as seleções
+  if (!dbExistsTable(con, "escola_concorrentes")) {
+    dbExecute(con, "
+      CREATE TABLE escola_concorrentes (
+        codinep_principal TEXT NOT NULL,
+        codinep_concorrente TEXT NOT NULL,
+        PRIMARY KEY (codinep_principal, codinep_concorrente)
+      )
+    ")
+    cat("Tabela 'escola_concorrentes' criada.\n")
+  }
+  # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> FIM DA NOVA TABELA >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
 }
 
 # --- Funções para interagir com o banco de dados ---
@@ -101,6 +115,11 @@ delete_escola_from_db <- function(codinep_to_delete) {
   # Exclui da tabela 'users'
   dbExecute(con, "DELETE FROM users WHERE codinep = ?", params = list(codinep_to_delete))
   
+  # <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<< ATUALIZAÇÃO <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+  # Também exclui as preferências de concorrentes salvas para essa escola
+  dbExecute(con, "DELETE FROM escola_concorrentes WHERE codinep_principal = ?", params = list(codinep_to_delete))
+  # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> FIM DA ATUALIZAÇÃO >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+  
   # Remove o arquivo .rds correspondente
   rds_file_path <- file.path("data/escolas", paste0(codinep_to_delete, ".rds"))
   if (file.exists(rds_file_path)) {
@@ -108,3 +127,41 @@ delete_escola_from_db <- function(codinep_to_delete) {
     cat("Arquivo .rds removido:", rds_file_path, "\n")
   }
 }
+
+
+# <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<< NOVAS FUNÇÕES PARA CONCORRENTES <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+# Busca os concorrentes salvos para uma escola
+get_concorrentes_selecionados <- function(codinep_principal) {
+  con <- db_connect()
+  on.exit(dbDisconnect(con))
+  
+  query <- "SELECT codinep_concorrente FROM escola_concorrentes WHERE codinep_principal = ?"
+  result <- dbGetQuery(con, query, params = list(codinep_principal))
+  
+  # Retorna um vetor de códigos ou NULL se não houver nenhum
+  if (nrow(result) > 0) {
+    return(result$codinep_concorrente)
+  } else {
+    return(NULL)
+  }
+}
+
+# Salva a seleção de concorrentes de uma escola
+save_concorrentes_selecionados <- function(codinep_principal, codineps_concorrentes) {
+  con <- db_connect()
+  on.exit(dbDisconnect(con))
+  
+  # 1. Deleta as seleções antigas para esta escola
+  dbExecute(con, "DELETE FROM escola_concorrentes WHERE codinep_principal = ?", params = list(codinep_principal))
+  
+  # 2. Insere as novas seleções, se houver alguma
+  if (length(codineps_concorrentes) > 0) {
+    df_to_insert <- tibble(
+      codinep_principal = codinep_principal,
+      codinep_concorrente = codineps_concorrentes
+    )
+    dbWriteTable(con, "escola_concorrentes", df_to_insert, append = TRUE)
+  }
+}
+# >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> FIM DAS NOVAS FUNÇÕES >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+

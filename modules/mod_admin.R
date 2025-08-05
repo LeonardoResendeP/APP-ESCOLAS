@@ -48,12 +48,17 @@ mod_admin_ui <- function(id) {
       ),
       
       tabPanel("Gestão de Escolas",
+               # A tabela agora ocupa a linha inteira para melhor visualização
                fluidRow(
-                 column(6,
+                 column(12,
                         h4("Escolas Atualmente Cadastradas"),
                         DT::dataTableOutput(ns("tabela_escolas"))
-                 ),
-                 column(6,
+                 )
+               ),
+               hr(), # Adiciona uma linha divisória para organização
+               # A seção de exclusão fica em uma nova linha, abaixo da tabela
+               fluidRow(
+                 column(6, # Usamos column(6) para não ocupar a tela inteira
                         h4("Excluir Escola Cadastrada"),
                         uiOutput(ns("seletor_escola_excluir_ui")),
                         actionButton(ns("btn_delete_escola"), "Excluir Escola Selecionada", class = "btn-danger"),
@@ -107,15 +112,8 @@ mod_admin_server <- function(id) {
       nomes_limpos %>%
         left_join(geo, by = c("CO_ENTIDADE" = "code_school")) %>%
         mutate(
-          # <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<< LÓGICA ATUALIZADA <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
-          # Usa coalesce para pegar o primeiro nome de município não-nulo:
-          # 1. Tenta usar o nome do ficheiro geográfico (name_muni)
-          # 2. Se for nulo, usa o nome do ficheiro do censo (nome_municipio)
-          # 3. Se ambos forem nulos, define como "Município Desconhecido"
           final_muni_name = coalesce(name_muni, nome_municipio, "Município Desconhecido"),
           final_muni_name = iconv(final_muni_name, to = "latin1", sub = " "),
-          # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> FIM DA ATUALIZAÇÃO >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
-          
           display_name = paste0(NO_ENTIDADE, " - ", final_muni_name, " (", CO_ENTIDADE, ")"),
           empty_geo = ifelse(is.na(empty_geo), TRUE, empty_geo)
         ) %>%
@@ -159,17 +157,29 @@ mod_admin_server <- function(id) {
     observeEvent(input$btn_add_escola, {
       req(input$codinep, input$nome_escola_busca, input$user_escola, input$senha_escola)
       
+      # 1. Verifica se o Cód. INEP já existe na base de dados
+      escolas_ja_cadastradas <- dados_cadastrados()
+      if (input$codinep %in% escolas_ja_cadastradas$codinep) {
+        output$status_cadastro <- renderText("⚠️ Erro: Esta escola já está cadastrada no sistema.")
+        return() # Interrompe a execução para evitar o erro
+      }
+      
       escola_selecionada <- escolas_base() %>%
         filter(display_name == input$nome_escola_busca) %>%
         slice(1)
       
       nome_real_escola <- escola_selecionada$NO_ENTIDADE
       
-      muni_manual <- NULL
-      if (escola_selecionada$final_muni_name == "Município Desconhecido") {
+      # <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<< CORREÇÃO DA LÓGICA <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+      # Define o nome final do município a ser usado no pré-processamento
+      nome_municipio_final <- escola_selecionada$final_muni_name
+      
+      # Se o município for desconhecido na base, exige a seleção manual e usa esse valor
+      if (nome_municipio_final == "Município Desconhecido") {
         req(input$muni_manual_busca, message = "Por favor, selecione um município para a escola.")
-        muni_manual <- input$muni_manual_busca
+        nome_municipio_final <- input$muni_manual_busca
       }
+      # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> FIM DA CORREÇÃO >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
       
       tryCatch({
         save_escola_to_db(
@@ -187,9 +197,10 @@ mod_admin_server <- function(id) {
         
         tryCatch({
           if (usar_geo_manual) {
-            preprocessar_escola(input$codinep, lat = input$lat_manual, lon = input$lon_manual, nome_muni_manual = muni_manual)
+            preprocessar_escola(input$codinep, lat = input$lat_manual, lon = input$lon_manual, nome_muni_manual = nome_municipio_final)
           } else {
-            preprocessar_escola(input$codinep, nome_muni_manual = muni_manual)
+            # Passa o nome do município para a função de pré-processamento
+            preprocessar_escola(input$codinep, nome_muni_manual = nome_municipio_final)
           }
           output$status_cadastro <- renderText("✅ Escola cadastrada e dados gerados com sucesso!")
         }, error = function(e_proc) {

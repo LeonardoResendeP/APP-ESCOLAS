@@ -1,5 +1,6 @@
 library(shiny)
 library(tidyverse)
+library(bslib) # Carrega a biblioteca de temas
 
 # Carrega o novo utilitário de banco de dados
 source("utils/db_utils.R")
@@ -10,12 +11,18 @@ source("modules/mod_admin.R")
 source("modules/mod_escola.R")
 
 # --- Inicialização do Banco de Dados ---
-# Esta função será executada uma vez quando o app iniciar.
-# Ela cria o arquivo do banco de dados e as tabelas se não existirem.
 db_init()
 # ------------------------------------
 
 ui <- fluidPage(
+  # <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<< ATUALIZAÇÃO DE ESTILO <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+  theme = bs_theme(version = 5, bootswatch = "minty"), # Aplica um tema profissional
+  
+  tags$head(
+    tags$link(rel = "stylesheet", type = "text/css", href = "styles.css") # Vincula nosso CSS personalizado
+  ),
+  # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> FIM DA ATUALIZAÇÃO >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+  
   uiOutput("main_ui")
 )
 
