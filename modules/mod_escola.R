@@ -80,7 +80,6 @@ mod_escola_ui <- function(id) {
                )
       ),
       
-      # <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<< INÍCIO DA CORREÇÃO <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
       # --- Aba Desempenho Acadêmico com Sub-abas ---
       tabPanel("Desempenho Acadêmico",
                h3("Análise de Desempenho - ENEM 2024"),
@@ -101,7 +100,6 @@ mod_escola_ui <- function(id) {
                  )
                )
       ),
-      # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> FIM DA CORREÇÃO >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
       
       tabPanel("Chat com IA",
                icon = icon("robot"),
@@ -373,7 +371,6 @@ mod_escola_server <- function(id, user, codinep) {
       HTML(tabela_html)
     })
     
-    # <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<< INÍCIO DA CORREÇÃO <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
     # --- Lógica para Visão Consolidada ---
     output$ui_desempenho_areas_consolidado <- renderUI({
       ns <- session$ns
@@ -387,7 +384,7 @@ mod_escola_server <- function(id, user, codinep) {
       dados <- dados_escola_reativo()
       req(dados, dados$dados_enem_areas)
       df_enem <- dados$dados_enem_areas %>%
-        filter(escola_label %in% c("Sua Escola", "Média Concorrentes", "Média Municipal"))
+        filter(tipo %in% c("Sua Escola", "Média Concorrentes", "Média Municipal"))
       
       plotly::plot_ly(df_enem, x = ~area, y = ~nota, color = ~escola_label, type = 'bar', text = ~round(nota, 1), textposition = 'outside') %>%
         plotly::layout(yaxis = list(title = 'Nota Média'), xaxis = list(title = 'Área de Conhecimento'), barmode = 'group', legend = list(orientation = 'h', y = -0.2))
@@ -397,10 +394,10 @@ mod_escola_server <- function(id, user, codinep) {
       dados <- dados_escola_reativo()
       req(dados, dados$dados_enem_areas)
       dados$dados_enem_areas %>%
-        filter(escola_label %in% c("Sua Escola", "Média Concorrentes", "Média Municipal")) %>%
+        filter(tipo %in% c("Sua Escola", "Média Concorrentes", "Média Municipal")) %>%
         mutate(nota = round(nota, 1)) %>%
-        pivot_wider(names_from = escola_label, values_from = nota) %>%
-        rename(Área = area) %>%
+        select(Área = area, Categoria = escola_label, Nota = nota) %>%
+        pivot_wider(names_from = Categoria, values_from = Nota) %>%
         DT::datatable(options = list(dom = 't'), rownames = FALSE)
     })
     
@@ -416,7 +413,7 @@ mod_escola_server <- function(id, user, codinep) {
       dados <- dados_escola_reativo()
       req(dados, dados$dados_enem_redacao)
       df_redacao <- dados$dados_enem_redacao %>%
-        filter(escola_label %in% c("Sua Escola", "Média Concorrentes", "Média Municipal"))
+        filter(tipo %in% c("Sua Escola", "Média Concorrentes", "Média Municipal"))
       
       plotly::plot_ly(df_redacao, x = ~competencia, y = ~nota, color = ~escola_label, type = 'bar', text = ~round(nota, 1), textposition = 'outside') %>%
         plotly::layout(yaxis = list(title = 'Nota Média', range = c(0, 220)), xaxis = list(title = 'Competência da Redação'), barmode = 'group', legend = list(orientation = 'h', y = -0.2))
@@ -426,10 +423,10 @@ mod_escola_server <- function(id, user, codinep) {
       dados <- dados_escola_reativo()
       req(dados, dados$dados_enem_redacao)
       dados$dados_enem_redacao %>%
-        filter(escola_label %in% c("Sua Escola", "Média Concorrentes", "Média Municipal")) %>%
+        filter(tipo %in% c("Sua Escola", "Média Concorrentes", "Média Municipal")) %>%
         mutate(nota = round(nota, 1)) %>%
-        pivot_wider(names_from = escola_label, values_from = nota) %>%
-        rename(Competência = competencia) %>%
+        select(Competência = competencia, Categoria = escola_label, Nota = nota) %>%
+        pivot_wider(names_from = Categoria, values_from = Nota) %>%
         DT::datatable(options = list(dom = 't'), rownames = FALSE)
     })
     
@@ -446,7 +443,7 @@ mod_escola_server <- function(id, user, codinep) {
       dados <- dados_escola_reativo()
       req(dados, dados$dados_enem_areas)
       df_enem <- dados$dados_enem_areas %>%
-        filter(!escola_label %in% c("Média Concorrentes", "Média Municipal"))
+        filter(tipo %in% c("Sua Escola", "Concorrente"))
       
       plotly::plot_ly(df_enem, x = ~area, y = ~nota, color = ~escola_label, type = 'bar', text = ~round(nota, 1), textposition = 'outside') %>%
         plotly::layout(yaxis = list(title = 'Nota Média'), xaxis = list(title = 'Área de Conhecimento'), barmode = 'group', legend = list(orientation = 'h', y = -0.2))
@@ -456,10 +453,10 @@ mod_escola_server <- function(id, user, codinep) {
       dados <- dados_escola_reativo()
       req(dados, dados$dados_enem_areas)
       dados$dados_enem_areas %>%
-        filter(!escola_label %in% c("Média Concorrentes", "Média Municipal")) %>%
+        filter(tipo %in% c("Sua Escola", "Concorrente")) %>%
         mutate(nota = round(nota, 1)) %>%
-        pivot_wider(names_from = escola_label, values_from = nota) %>%
-        rename(Área = area) %>%
+        select(Área = area, Escola = escola_label, Nota = nota) %>%
+        pivot_wider(names_from = Escola, values_from = Nota) %>%
         DT::datatable(options = list(dom = 't'), rownames = FALSE)
     })
     
@@ -475,7 +472,7 @@ mod_escola_server <- function(id, user, codinep) {
       dados <- dados_escola_reativo()
       req(dados, dados$dados_enem_redacao)
       df_redacao <- dados$dados_enem_redacao %>%
-        filter(!escola_label %in% c("Média Concorrentes", "Média Municipal"))
+        filter(tipo %in% c("Sua Escola", "Concorrente"))
       
       plotly::plot_ly(df_redacao, x = ~competencia, y = ~nota, color = ~escola_label, type = 'bar', text = ~round(nota, 1), textposition = 'outside') %>%
         plotly::layout(yaxis = list(title = 'Nota Média', range = c(0, 220)), xaxis = list(title = 'Competência da Redação'), barmode = 'group', legend = list(orientation = 'h', y = -0.2))
@@ -485,13 +482,12 @@ mod_escola_server <- function(id, user, codinep) {
       dados <- dados_escola_reativo()
       req(dados, dados$dados_enem_redacao)
       dados$dados_enem_redacao %>%
-        filter(!escola_label %in% c("Média Concorrentes", "Média Municipal")) %>%
+        filter(tipo %in% c("Sua Escola", "Concorrente")) %>%
         mutate(nota = round(nota, 1)) %>%
-        pivot_wider(names_from = escola_label, values_from = nota) %>%
-        rename(Competência = competencia) %>%
+        select(Competência = competencia, Escola = escola_label, Nota = nota) %>%
+        pivot_wider(names_from = Escola, values_from = Nota) %>%
         DT::datatable(options = list(dom = 't'), rownames = FALSE)
     })
-    # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> FIM DA CORREÇÃO >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
     
   })
 }

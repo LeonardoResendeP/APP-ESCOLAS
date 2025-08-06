@@ -85,54 +85,63 @@ processar_enem_local <- function(codinep, ids_concorrentes, id_municipio) {
   
   dados_individuais <- enem_consolidado_escola %>%
     filter(CO_ESCOLA %in% c(codinep_num, ids_concorrentes_num)) %>%
-    mutate(CO_ESCOLA = as.character(CO_ESCOLA))
+    mutate(id_escola = as.character(CO_ESCOLA))
   
-  dados_concorrentes_media <- dados_individuais %>%
-    filter(CO_ESCOLA %in% ids_concorrentes) %>%
+  concorrentes_encontrados <- dados_individuais %>% filter(id_escola %in% ids_concorrentes)
+  num_encontrados <- n_distinct(concorrentes_encontrados$id_escola)
+  
+  dados_concorrentes_media <- concorrentes_encontrados %>%
     summarise(across(starts_with("NU_NOTA"), ~ mean(.x, na.rm = TRUE))) %>%
-    mutate(CO_ESCOLA = "Média Concorrentes")
+    mutate(id_escola = "Média Concorrentes")
   
   dados_municipio_media <- enem_consoliado_municipio %>%
     filter(CO_MUNICIPIO_ESC == id_municipio_num) %>%
-    mutate(CO_ESCOLA = "Média Municipal")
+    mutate(id_escola = "Média Municipal") %>%
+    select(-CO_MUNICIPIO_ESC)
   
   dados_combinados_full <- bind_rows(
     dados_individuais,
     dados_concorrentes_media,
     dados_municipio_media
   ) %>%
-    left_join(nomes_all, by = c("CO_ESCOLA" = "id_escola")) %>%
+    left_join(nomes_all, by = "id_escola") %>%
     mutate(
+      tipo = case_when(
+        id_escola == codinep ~ "Sua Escola",
+        id_escola %in% ids_concorrentes ~ "Concorrente",
+        id_escola == "Média Concorrentes" ~ "Média Concorrentes",
+        id_escola == "Média Municipal" ~ "Média Municipal"
+      ),
       escola_label = case_when(
-        CO_ESCOLA == codinep ~ "Sua Escola",
-        CO_ESCOLA == "Média Concorrentes" ~ "Média Concorrentes",
-        CO_ESCOLA == "Média Municipal" ~ "Média Municipal",
+        tipo == "Sua Escola" ~ "Sua Escola",
+        tipo == "Média Concorrentes" ~ paste0("Média Concorrentes (", num_encontrados, " de ", length(ids_concorrentes), ")"),
+        tipo == "Média Municipal" ~ "Média Municipal",
         TRUE ~ nome_escola
       )
     )
   
   df_areas <- dados_combinados_full %>%
-    select(escola_label,
+    select(id_escola, tipo, escola_label,
            `Ciências da Natureza` = NU_NOTA_CN,
            `Ciências Humanas` = NU_NOTA_CH,
            `Linguagens e Códigos` = NU_NOTA_LC,
            `Matemática` = NU_NOTA_MT,
            `Redação` = NU_NOTA_REDACAO) %>%
     pivot_longer(
-      cols = -escola_label,
+      cols = -c(id_escola, tipo, escola_label),
       names_to = "area",
       values_to = "nota"
     )
   
   df_redacao <- dados_combinados_full %>%
-    select(escola_label,
+    select(id_escola, tipo, escola_label,
            `Competência 1` = NU_NOTA_COMP1,
            `Competência 2` = NU_NOTA_COMP2,
            `Competência 3` = NU_NOTA_COMP3,
            `Competência 4` = NU_NOTA_COMP4,
            `Competência 5` = NU_NOTA_COMP5) %>%
     pivot_longer(
-      cols = -escola_label,
+      cols = -c(id_escola, tipo, escola_label),
       names_to = "competencia",
       values_to = "nota"
     )
@@ -163,7 +172,6 @@ reprocessar_dados_concorrentes <- function(codinep, ids_concorrentes, id_municip
   )
   on.exit(dbDisconnect(con))
   
-  # --- 1. Busca de Dados de Matrícula ---
   query_matriculas <- glue::glue_sql(
     "SELECT
      ano, CAST(id_escola AS STRING) AS id_escola,
@@ -176,10 +184,8 @@ reprocessar_dados_concorrentes <- function(codinep, ids_concorrentes, id_municip
   )
   df_matriculas <- dbGetQuery(con, query_matriculas)
   
-  # --- 2. Busca de Dados de Infraestrutura ---
   df_infra <- fetch_infra_data(todos_os_ids, id_municipio, ano_infra, con)
   
-  # --- 3. Processamento dos Dados de Matrícula ---
   make_bloco_matriculas <- function(df, anos) {
     if (nrow(df) == 0) return(list())
     df_wide <- df %>%
@@ -204,7 +210,6 @@ reprocessar_dados_concorrentes <- function(codinep, ids_concorrentes, id_municip
   dados_propria_escola <- make_bloco_matriculas(df_matriculas %>% filter(id_escola == codinep), anos_matricula)
   dados_concorrentes_proximos <- make_bloco_matriculas(df_matriculas %>% filter(id_escola != codinep), anos_matricula)
   
-  # --- 4. Busca de Dados de Mercado (Matrículas do Município) ---
   query_mercado <- glue::glue_sql("
       SELECT ano,
         COALESCE(SUM(quantidade_matricula_infantil_creche), 0) + COALESCE(SUM(quantidade_matricula_infantil_pre_escola), 0) AS mat_infantil,
@@ -217,10 +222,8 @@ reprocessar_dados_concorrentes <- function(codinep, ids_concorrentes, id_municip
   dados_mercado <- dbGetQuery(con, query_mercado)
   dados_mercado_municipio <- make_bloco_matriculas(dados_mercado, anos_matricula)
   
-  # 5. Processamento de Dados Locais do ENEM
   dados_enem_local <- processar_enem_local(codinep, ids_concorrentes, id_municipio)
   
-  # --- Retorna uma lista com todos os dados processados ---
   return(
     list(
       dados_propria_escola = dados_propria_escola,
@@ -244,7 +247,6 @@ preprocessar_escola <- function(codinep, lat = NULL, lon = NULL, nome_muni_manua
   codinep <- as.character(codinep)
   cat("\n\U0001F504 Iniciando processamento da escola:", codinep, "\n")
   
-  # Carrega os dados locais
   nomes_all <- readRDS("data/escolas_privadas_nomelista.rds") %>% dplyr::mutate(CO_ENTIDADE = as.character(CO_ENTIDADE))
   geo_all_sf <- readRDS("data/escolas_geo_com_empty_flag.rds")
   geo_all_df <- sf::st_drop_geometry(geo_all_sf) %>%
@@ -318,4 +320,3 @@ preprocessar_escola <- function(codinep, lat = NULL, lon = NULL, nome_muni_manua
   cat("\U00002705 Dados processados e salvos com sucesso em:", path_out, "\n")
   return(TRUE)
 }
-# >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> FIM DA CORREÇÃO >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
