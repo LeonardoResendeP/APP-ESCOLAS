@@ -9,19 +9,22 @@ source("utils/db_utils.R")
 source("modules/mod_auth.R")
 source("modules/mod_admin.R")
 source("modules/mod_escola.R")
+# <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<< ADICIONAR ESTA LINHA <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+source("modules/mod_chat.R") # Carrega o módulo de chat globalmente
+# >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> FIM DA ADIÇÃO >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+
 
 # --- Inicialização do Banco de Dados ---
 db_init()
 # ------------------------------------
 
 ui <- fluidPage(
-  # <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<< ATUALIZAÇÃO DE ESTILO <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
-  theme = bs_theme(version = 5, bootswatch = "minty"), # Aplica um tema profissional
+  theme = bs_theme(version = 5, bootswatch = "minty"), 
   
   tags$head(
-    tags$link(rel = "stylesheet", type = "text/css", href = "styles.css") # Vincula nosso CSS personalizado
+    tags$link(rel = "stylesheet", type = "text/css", href = "styles.css"),
+    tags$link(rel = "stylesheet", href = "https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css")
   ),
-  # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> FIM DA ATUALIZAÇÃO >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
   
   uiOutput("main_ui")
 )

@@ -27,11 +27,9 @@ mod_escola_ui <- function(id) {
                )
       ),
       
-      # <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<< ABA BENCHMARK COM NOVO LAYOUT <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+      # --- Aba Benchmark Concorrentes ---
       tabPanel("Benchmark Concorrentes", 
-               # Usamos sidebarLayout para uma melhor organização
                sidebarLayout(
-                 # Painel lateral para os controles de seleção
                  sidebarPanel(
                    h4("Seleção de Concorrentes"),
                    p("Escolha até 5 escolas para uma análise personalizada. A análise padrão usa os 5 concorrentes mais próximos."),
@@ -47,9 +45,7 @@ mod_escola_ui <- function(id) {
                    actionButton(ns("btn_restaurar_padrao"), "Restaurar Padrão", icon = icon("undo"), class = "btn-secondary btn-block")
                  ),
                  
-                 # Painel principal para exibir os dados
                  mainPanel(
-                   # Usamos tabsetPanel para organizar o mapa e a tabela
                    tabsetPanel(
                      type = "tabs",
                      tabPanel("Mapa de Concorrentes", leaflet::leafletOutput(ns("mapa_concorrentes"), height = "600px")),
@@ -58,7 +54,6 @@ mod_escola_ui <- function(id) {
                  )
                )
       ),
-      # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> FIM DA ATUALIZAÇÃO >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
       
       # --- Aba Análise de Infraestrutura ---
       tabPanel("Análise de Infraestrutura",
@@ -71,26 +66,46 @@ mod_escola_ui <- function(id) {
                hr(),
                fluidRow(
                  column(12,
-                        h4("Visão Geral Comparativa"),
-                        plotly::plotlyOutput(ns("radar_infra"), height = "600px")
-                 )
-               ),
-               br(),
-               fluidRow(
-                 column(12,
-                        h4("Análise Detalhada por Categoria"),
-                        uiOutput(ns("cards_infra_detalhada"))
+                        h4("Análise Detalhada"),
+                        tabsetPanel(
+                          type = "tabs",
+                          tabPanel("Resumo Comparativo", 
+                                   br(),
+                                   uiOutput(ns("cards_infra_detalhada"))),
+                          tabPanel("Detalhe por Concorrente", 
+                                   br(),
+                                   uiOutput(ns("tabela_infra_detalhada_ui")))
+                        )
                  )
                )
       ),
       
-      # --- Aba Desempenho Acadêmico ---
+      # <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<< INÍCIO DA CORREÇÃO <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+      # --- Aba Desempenho Acadêmico com Sub-abas ---
       tabPanel("Desempenho Acadêmico",
                h3("Análise de Desempenho - ENEM 2024"),
                p("Comparativo das médias do ENEM por área de conhecimento e detalhamento das competências da redação."),
-               uiOutput(ns("ui_desempenho_areas")),
-               hr(),
-               uiOutput(ns("ui_desempenho_redacao"))
+               tabsetPanel(
+                 type = "tabs",
+                 tabPanel("Visão Consolidada",
+                          br(),
+                          uiOutput(ns("ui_desempenho_areas_consolidado")),
+                          hr(),
+                          uiOutput(ns("ui_desempenho_redacao_consolidado"))
+                 ),
+                 tabPanel("Detalhe por Concorrente",
+                          br(),
+                          uiOutput(ns("ui_desempenho_areas_detalhado")),
+                          hr(),
+                          uiOutput(ns("ui_desempenho_redacao_detalhado"))
+                 )
+               )
+      ),
+      # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> FIM DA CORREÇÃO >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+      
+      tabPanel("Chat com IA",
+               icon = icon("robot"),
+               mod_chat_ui(ns("chat_ia"))
       )
     )
   )
@@ -100,14 +115,12 @@ mod_escola_ui <- function(id) {
 mod_escola_server <- function(id, user, codinep) {
   moduleServer(id, function(input, output, session) {
     
-    # Carrega as funções de utilidade
     source("utils/preprocess_utils.R", local = TRUE)
     source("utils/db_utils.R", local = TRUE)
     
     dados_escola_reativo <- reactiveVal(NULL)
-    dados_escola_padrao <- reactiveVal(NULL) # Armazena os dados originais
+    dados_escola_padrao <- reactiveVal(NULL)
     
-    # Observador inicial para carregar os dados
     observe({
       req(codinep)
       caminho_arquivo <- file.path("data", "escolas", paste0(codinep, ".rds"))
@@ -121,7 +134,8 @@ mod_escola_server <- function(id, user, codinep) {
       }
     })
     
-    # --- Título Dinâmico ---
+    mod_chat_server("chat_ia", dados_escola = dados_escola_reativo)
+    
     output$nome_escola_titulo <- renderText({
       dados <- dados_escola_reativo()
       if (!is.null(dados)) {
@@ -130,8 +144,6 @@ mod_escola_server <- function(id, user, codinep) {
         "Painel da Escola"
       }
     })
-    
-    # --- Lógica da Aba Benchmark Concorrentes ---
     
     concorrentes_disponiveis <- reactive({
       dados <- dados_escola_reativo()
@@ -216,8 +228,6 @@ mod_escola_server <- function(id, user, codinep) {
       dados_escola_reativo(dados_finais_padrao)
     })
     
-    # --- RENDERIZAÇÃO DE ELEMENTOS ---
-    
     criar_caixa_kpi <- function(dados_segmento) {
       valor1 <- dados_segmento$valor_ano_1
       valor2 <- dados_segmento$valor_ano_2
@@ -300,17 +310,6 @@ mod_escola_server <- function(id, user, codinep) {
       return(df_long)
     })
     
-    output$radar_infra <- plotly::renderPlotly({
-      df_plot <- dados_infra_resumidos()
-      df_radar <- df_plot %>% filter(!str_detect(indicador, "total_dispositivos"))
-      p <- plotly::plot_ly(type = 'scatterpolar', mode = 'lines', fill = 'toself') %>%
-        plotly::add_trace(r = df_radar$`Sua Escola`, theta = df_radar$indicador_label, name = 'Sua Escola') %>%
-        plotly::add_trace(r = df_radar$`Média Concorrentes`, theta = df_radar$indicador_label, name = 'Média Concorrentes') %>%
-        plotly::add_trace(r = df_radar$`Média Municipal`, theta = df_radar$indicador_label, name = 'Média Municipal') %>%
-        plotly::layout(polar = list(radialaxis = list(visible = T, range = c(0, 1))), showlegend = TRUE, legend = list(orientation = 'h', y = -0.1))
-      p
-    })
-    
     output$cards_infra_detalhada <- renderUI({
       df_cards <- dados_infra_resumidos()
       criar_cartao_indicador <- function(row) {
@@ -333,55 +332,166 @@ mod_escola_server <- function(id, user, codinep) {
       })
     })
     
-    output$ui_desempenho_areas <- renderUI({
+    output$tabela_infra_detalhada_ui <- renderUI({
       dados <- dados_escola_reativo()
-      req(dados, dados$dados_enem_areas, nrow(dados$dados_enem_areas) > 0)
-      ns <- session$ns
-      fluidRow(column(7, h4("Comparativo de Médias por Área"), plotly::plotlyOutput(ns("plot_enem_areas"))), column(5, h4("Tabela de Médias"), DT::dataTableOutput(ns("tabela_enem_areas"))))
+      req(dados, dados$dados_infraestrutura, dados$lista_concorrentes)
+      
+      df_infra_raw <- dados$dados_infraestrutura
+      nomes_concorrentes <- dados$lista_concorrentes %>% select(id_escola, nome_escola)
+      
+      df_detalhada <- df_infra_raw %>%
+        filter(id_escola %in% c(codinep, dados$lista_concorrentes$id_escola)) %>%
+        left_join(nomes_concorrentes, by = "id_escola") %>%
+        mutate(label = ifelse(id_escola == codinep, "Sua Escola", nome_escola)) %>%
+        select(-id_escola, -nome_escola) %>%
+        pivot_longer(cols = -label, names_to = "indicador", values_to = "valor") %>%
+        mutate(
+          indicador_label = str_replace_all(indicador, "_", " ") %>% 
+            str_remove("^(essencial|lazer|tec|apoio)") %>% 
+            str_trim() %>% 
+            str_to_title()
+        ) %>%
+        select(Indicador = indicador_label, Escola = label, Valor = valor) %>%
+        pivot_wider(names_from = Escola, values_from = Valor) %>%
+        relocate(Indicador, `Sua Escola`)
+      
+      df_formatada <- df_detalhada %>%
+        mutate(across(-Indicador, ~ {
+          if_else(
+            Indicador == "Total Dispositivos Aluno",
+            as.character(round(as.numeric(.), 1)),
+            if_else(as.numeric(.) == 1, 
+                    as.character(icon("check", class = "table-icon", style = "color: green;")), 
+                    as.character(icon("times", class = "table-icon", style = "color: red;")))
+          )
+        }))
+      
+      tabela_html <- knitr::kable(df_formatada, "html", escape = FALSE, align = c('l', rep('c', ncol(df_formatada) - 1))) %>%
+        kableExtra::kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = T) %>%
+        kableExtra::scroll_box(width = "100%")
+      
+      HTML(tabela_html)
     })
     
-    output$plot_enem_areas <- plotly::renderPlotly({
+    # <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<< INÍCIO DA CORREÇÃO <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+    # --- Lógica para Visão Consolidada ---
+    output$ui_desempenho_areas_consolidado <- renderUI({
+      ns <- session$ns
+      fluidRow(
+        column(7, h4("Comparativo de Médias por Área"), plotly::plotlyOutput(ns("plot_enem_areas_consolidado"))),
+        column(5, h4("Tabela de Médias"), DT::dataTableOutput(ns("tabela_enem_areas_consolidado")))
+      )
+    })
+    
+    output$plot_enem_areas_consolidado <- plotly::renderPlotly({
       dados <- dados_escola_reativo()
       req(dados, dados$dados_enem_areas)
-      df_enem <- dados$dados_enem_areas
-      plotly::plot_ly(df_enem, x = ~area, y = ~nota, color = ~tipo, type = 'bar', text = ~round(nota, 1), textposition = 'outside') %>%
+      df_enem <- dados$dados_enem_areas %>%
+        filter(escola_label %in% c("Sua Escola", "Média Concorrentes", "Média Municipal"))
+      
+      plotly::plot_ly(df_enem, x = ~area, y = ~nota, color = ~escola_label, type = 'bar', text = ~round(nota, 1), textposition = 'outside') %>%
         plotly::layout(yaxis = list(title = 'Nota Média'), xaxis = list(title = 'Área de Conhecimento'), barmode = 'group', legend = list(orientation = 'h', y = -0.2))
     })
     
-    output$tabela_enem_areas <- DT::renderDataTable({
+    output$tabela_enem_areas_consolidado <- DT::renderDataTable({
       dados <- dados_escola_reativo()
       req(dados, dados$dados_enem_areas)
       dados$dados_enem_areas %>%
+        filter(escola_label %in% c("Sua Escola", "Média Concorrentes", "Média Municipal")) %>%
         mutate(nota = round(nota, 1)) %>%
-        pivot_wider(names_from = tipo, values_from = nota) %>%
+        pivot_wider(names_from = escola_label, values_from = nota) %>%
         rename(Área = area) %>%
         DT::datatable(options = list(dom = 't'), rownames = FALSE)
     })
     
-    output$ui_desempenho_redacao <- renderUI({
-      dados <- dados_escola_reativo()
-      req(dados, dados$dados_enem_redacao, nrow(dados$dados_enem_redacao) > 0)
+    output$ui_desempenho_redacao_consolidado <- renderUI({
       ns <- session$ns
-      fluidRow(column(7, h4("Detalhamento da Nota de Redação"), plotly::plotlyOutput(ns("plot_enem_redacao"))), column(5, h4("Tabela de Competências"), DT::dataTableOutput(ns("tabela_enem_redacao"))))
+      fluidRow(
+        column(7, h4("Detalhamento da Nota de Redação"), plotly::plotlyOutput(ns("plot_enem_redacao_consolidado"))),
+        column(5, h4("Tabela de Competências"), DT::dataTableOutput(ns("tabela_enem_redacao_consolidado")))
+      )
     })
     
-    output$plot_enem_redacao <- plotly::renderPlotly({
+    output$plot_enem_redacao_consolidado <- plotly::renderPlotly({
       dados <- dados_escola_reativo()
       req(dados, dados$dados_enem_redacao)
-      df_redacao <- dados$dados_enem_redacao
-      plotly::plot_ly(df_redacao, x = ~competencia, y = ~nota, color = ~tipo, type = 'bar', text = ~round(nota, 1), textposition = 'outside') %>%
+      df_redacao <- dados$dados_enem_redacao %>%
+        filter(escola_label %in% c("Sua Escola", "Média Concorrentes", "Média Municipal"))
+      
+      plotly::plot_ly(df_redacao, x = ~competencia, y = ~nota, color = ~escola_label, type = 'bar', text = ~round(nota, 1), textposition = 'outside') %>%
         plotly::layout(yaxis = list(title = 'Nota Média', range = c(0, 220)), xaxis = list(title = 'Competência da Redação'), barmode = 'group', legend = list(orientation = 'h', y = -0.2))
     })
     
-    output$tabela_enem_redacao <- DT::renderDataTable({
+    output$tabela_enem_redacao_consolidado <- DT::renderDataTable({
       dados <- dados_escola_reativo()
       req(dados, dados$dados_enem_redacao)
       dados$dados_enem_redacao %>%
+        filter(escola_label %in% c("Sua Escola", "Média Concorrentes", "Média Municipal")) %>%
         mutate(nota = round(nota, 1)) %>%
-        pivot_wider(names_from = tipo, values_from = nota) %>%
+        pivot_wider(names_from = escola_label, values_from = nota) %>%
         rename(Competência = competencia) %>%
         DT::datatable(options = list(dom = 't'), rownames = FALSE)
     })
+    
+    # --- Lógica para Visão Detalhada ---
+    output$ui_desempenho_areas_detalhado <- renderUI({
+      ns <- session$ns
+      fluidRow(
+        column(7, h4("Comparativo de Médias por Área"), plotly::plotlyOutput(ns("plot_enem_areas_detalhado"))),
+        column(5, h4("Tabela de Médias"), DT::dataTableOutput(ns("tabela_enem_areas_detalhado")))
+      )
+    })
+    
+    output$plot_enem_areas_detalhado <- plotly::renderPlotly({
+      dados <- dados_escola_reativo()
+      req(dados, dados$dados_enem_areas)
+      df_enem <- dados$dados_enem_areas %>%
+        filter(!escola_label %in% c("Média Concorrentes", "Média Municipal"))
+      
+      plotly::plot_ly(df_enem, x = ~area, y = ~nota, color = ~escola_label, type = 'bar', text = ~round(nota, 1), textposition = 'outside') %>%
+        plotly::layout(yaxis = list(title = 'Nota Média'), xaxis = list(title = 'Área de Conhecimento'), barmode = 'group', legend = list(orientation = 'h', y = -0.2))
+    })
+    
+    output$tabela_enem_areas_detalhado <- DT::renderDataTable({
+      dados <- dados_escola_reativo()
+      req(dados, dados$dados_enem_areas)
+      dados$dados_enem_areas %>%
+        filter(!escola_label %in% c("Média Concorrentes", "Média Municipal")) %>%
+        mutate(nota = round(nota, 1)) %>%
+        pivot_wider(names_from = escola_label, values_from = nota) %>%
+        rename(Área = area) %>%
+        DT::datatable(options = list(dom = 't'), rownames = FALSE)
+    })
+    
+    output$ui_desempenho_redacao_detalhado <- renderUI({
+      ns <- session$ns
+      fluidRow(
+        column(7, h4("Detalhamento da Nota de Redação"), plotly::plotlyOutput(ns("plot_enem_redacao_detalhado"))),
+        column(5, h4("Tabela de Competências"), DT::dataTableOutput(ns("tabela_enem_redacao_detalhado")))
+      )
+    })
+    
+    output$plot_enem_redacao_detalhado <- plotly::renderPlotly({
+      dados <- dados_escola_reativo()
+      req(dados, dados$dados_enem_redacao)
+      df_redacao <- dados$dados_enem_redacao %>%
+        filter(!escola_label %in% c("Média Concorrentes", "Média Municipal"))
+      
+      plotly::plot_ly(df_redacao, x = ~competencia, y = ~nota, color = ~escola_label, type = 'bar', text = ~round(nota, 1), textposition = 'outside') %>%
+        plotly::layout(yaxis = list(title = 'Nota Média', range = c(0, 220)), xaxis = list(title = 'Competência da Redação'), barmode = 'group', legend = list(orientation = 'h', y = -0.2))
+    })
+    
+    output$tabela_enem_redacao_detalhado <- DT::renderDataTable({
+      dados <- dados_escola_reativo()
+      req(dados, dados$dados_enem_redacao)
+      dados$dados_enem_redacao %>%
+        filter(!escola_label %in% c("Média Concorrentes", "Média Municipal")) %>%
+        mutate(nota = round(nota, 1)) %>%
+        pivot_wider(names_from = escola_label, values_from = nota) %>%
+        rename(Competência = competencia) %>%
+        DT::datatable(options = list(dom = 't'), rownames = FALSE)
+    })
+    # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> FIM DA CORREÇÃO >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
     
   })
 }

@@ -60,59 +60,86 @@ fetch_infra_data <- function(codigos_inep, id_municipio, ano, bq_connection) {
     cat("ERRO ao buscar a média de infraestrutura do município:", e$message, "\n"); return(NULL)
   })
   
-  return(bind_rows(dados_escolas, media_municipio))
+  if (!is.null(dados_escolas) && !is.null(media_municipio)) {
+    resultados_finais <- bind_rows(dados_escolas, media_municipio)
+  } else {
+    resultados_finais <- dados_escolas 
+  }
+  
+  return(resultados_finais)
 }
 
-processar_enem_local <- function(codinep, ids_concorrentes, id_municipio, enem_escola_df, enem_muni_df) {
+# <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<< INÍCIO DA CORREÇÃO <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+processar_enem_local <- function(codinep, ids_concorrentes, id_municipio) {
   cat("--- Processando dados do ENEM a partir de arquivo local ---\n")
+  
+  load("data/enem_consolidados.RData")
   
   codinep_num <- as.numeric(codinep)
   ids_concorrentes_num <- as.numeric(ids_concorrentes)
   id_municipio_num <- as.numeric(id_municipio)
   
-  dados_escola <- enem_escola_df %>%
-    filter(CO_ESCOLA == codinep_num) %>%
-    mutate(tipo = "Sua Escola")
+  nomes_all <- readRDS("data/escolas_privadas_nomelista.rds") %>% 
+    mutate(CO_ENTIDADE = as.character(CO_ENTIDADE)) %>%
+    select(id_escola = CO_ENTIDADE, nome_escola = NO_ENTIDADE)
   
-  dados_concorrentes <- enem_escola_df %>%
-    filter(CO_ESCOLA %in% ids_concorrentes_num) %>%
+  dados_individuais <- enem_consolidado_escola %>%
+    filter(CO_ESCOLA %in% c(codinep_num, ids_concorrentes_num)) %>%
+    mutate(CO_ESCOLA = as.character(CO_ESCOLA))
+  
+  dados_concorrentes_media <- dados_individuais %>%
+    filter(CO_ESCOLA %in% ids_concorrentes) %>%
     summarise(across(starts_with("NU_NOTA"), ~ mean(.x, na.rm = TRUE))) %>%
-    mutate(tipo = "Média Concorrentes")
+    mutate(CO_ESCOLA = "Média Concorrentes")
   
-  dados_municipio <- enem_muni_df %>%
+  dados_municipio_media <- enem_consoliado_municipio %>%
     filter(CO_MUNICIPIO_ESC == id_municipio_num) %>%
-    mutate(tipo = "Média Municipal")
+    mutate(CO_ESCOLA = "Média Municipal")
   
-  dados_combinados_full <- bind_rows(dados_escola, dados_concorrentes, dados_municipio)
+  dados_combinados_full <- bind_rows(
+    dados_individuais,
+    dados_concorrentes_media,
+    dados_municipio_media
+  ) %>%
+    left_join(nomes_all, by = c("CO_ESCOLA" = "id_escola")) %>%
+    mutate(
+      escola_label = case_when(
+        CO_ESCOLA == codinep ~ "Sua Escola",
+        CO_ESCOLA == "Média Concorrentes" ~ "Média Concorrentes",
+        CO_ESCOLA == "Média Municipal" ~ "Média Municipal",
+        TRUE ~ nome_escola
+      )
+    )
   
   df_areas <- dados_combinados_full %>%
-    select(tipo,
+    select(escola_label,
            `Ciências da Natureza` = NU_NOTA_CN,
            `Ciências Humanas` = NU_NOTA_CH,
            `Linguagens e Códigos` = NU_NOTA_LC,
            `Matemática` = NU_NOTA_MT,
            `Redação` = NU_NOTA_REDACAO) %>%
     pivot_longer(
-      cols = -tipo,
+      cols = -escola_label,
       names_to = "area",
       values_to = "nota"
     )
   
   df_redacao <- dados_combinados_full %>%
-    select(tipo,
+    select(escola_label,
            `Competência 1` = NU_NOTA_COMP1,
            `Competência 2` = NU_NOTA_COMP2,
            `Competência 3` = NU_NOTA_COMP3,
            `Competência 4` = NU_NOTA_COMP4,
            `Competência 5` = NU_NOTA_COMP5) %>%
     pivot_longer(
-      cols = -tipo,
+      cols = -escola_label,
       names_to = "competencia",
       values_to = "nota"
     )
   
   return(list(areas = df_areas, redacao = df_redacao))
 }
+# >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> FIM DA CORREÇÃO >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
 
 # --- FUNÇÃO DE REPROCESSAMENTO (CHAMADA SOB DEMANDA) ---
 reprocessar_dados_concorrentes <- function(codinep, ids_concorrentes, id_municipio) {
@@ -190,9 +217,8 @@ reprocessar_dados_concorrentes <- function(codinep, ids_concorrentes, id_municip
   dados_mercado <- dbGetQuery(con, query_mercado)
   dados_mercado_municipio <- make_bloco_matriculas(dados_mercado, anos_matricula)
   
-  # --- 5. Processamento de Dados Locais do ENEM ---
-  load("data/enem_consolidados.RData")
-  dados_enem_local <- processar_enem_local(codinep, ids_concorrentes, id_municipio, enem_consoliado_escola, enem_consoliado_municipio)
+  # 5. Processamento de Dados Locais do ENEM
+  dados_enem_local <- processar_enem_local(codinep, ids_concorrentes, id_municipio)
   
   # --- Retorna uma lista com todos os dados processados ---
   return(
@@ -292,3 +318,4 @@ preprocessar_escola <- function(codinep, lat = NULL, lon = NULL, nome_muni_manua
   cat("\U00002705 Dados processados e salvos com sucesso em:", path_out, "\n")
   return(TRUE)
 }
+# >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> FIM DA CORREÇÃO >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
