@@ -42,7 +42,11 @@ mod_chat_server <- function(id, dados_escola) {
       history <- chat_log()
       lapply(history, function(msg) {
         bubble_class <- if (msg$role == "user") "user-bubble" else "assistant-bubble"
-        div(class = paste("chat-bubble", bubble_class), shiny::markdown(msg$content))
+        html <- tryCatch(
+          HTML(markdown::markdownToHTML(text = msg$content, fragment.only = TRUE)),
+          error = function(e) HTML(htmltools::htmlEscape(msg$content))
+        )
+        div(class = paste("chat-bubble", bubble_class), html)
       })
     })
     

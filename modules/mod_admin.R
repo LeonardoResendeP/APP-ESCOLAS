@@ -1,3 +1,5 @@
+# modules/mod_admin.R
+
 mod_admin_ui <- function(id) {
   ns <- NS(id)
   
@@ -48,17 +50,15 @@ mod_admin_ui <- function(id) {
       ),
       
       tabPanel("Gestão de Escolas",
-               # A tabela agora ocupa a linha inteira para melhor visualização
                fluidRow(
                  column(12,
                         h4("Escolas Atualmente Cadastradas"),
                         DT::dataTableOutput(ns("tabela_escolas"))
                  )
                ),
-               hr(), # Adiciona uma linha divisória para organização
-               # A seção de exclusão fica em uma nova linha, abaixo da tabela
+               hr(),
                fluidRow(
-                 column(6, # Usamos column(6) para não ocupar a tela inteira
+                 column(6,
                         h4("Excluir Escola Cadastrada"),
                         uiOutput(ns("seletor_escola_excluir_ui")),
                         actionButton(ns("btn_delete_escola"), "Excluir Escola Selecionada", class = "btn-danger"),
@@ -77,8 +77,13 @@ mod_admin_server <- function(id) {
     ns <- session$ns
     
     source("utils/preprocess_utils.R", local = TRUE)
+    # <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<< CORREÇÃO APLICADA AQUI <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+    # Esta linha estava faltando. Ela carrega todas as funções do seu arquivo
+    # db_utils.R, incluindo save_escola_to_db, corrigindo o erro.
+    source("utils/db_utils.R", local = TRUE)
+    # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> FIM DA CORREÇÃO >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
     
-    # --- Lógica de Cadastro ---
+    # --- Lógica de Cadastro (Sua versão original e funcional) ---
     
     geo_data <- reactive({
       geo <- readRDS("data/escolas_geo_com_empty_flag.rds")
@@ -98,14 +103,11 @@ mod_admin_server <- function(id) {
     })
     
     escolas_base <- reactive({
-      # Carrega a nova lista de escolas ENRIQUECIDA
       nomes <- readRDS("data/escolas_privadas_nomelista.rds")
-      
       geo <- geo_data()
       
       nomes_limpos <- nomes %>%
         mutate(
-          NO_ENTIDADE = iconv(NO_ENTIDADE, to = "latin1", sub = " "),
           NO_ENTIDADE = stringr::str_squish(NO_ENTIDADE)
         )
       
@@ -113,7 +115,6 @@ mod_admin_server <- function(id) {
         left_join(geo, by = c("CO_ENTIDADE" = "code_school")) %>%
         mutate(
           final_muni_name = coalesce(name_muni, nome_municipio, "Município Desconhecido"),
-          final_muni_name = iconv(final_muni_name, to = "latin1", sub = " "),
           display_name = paste0(NO_ENTIDADE, " - ", final_muni_name, " (", CO_ENTIDADE, ")"),
           empty_geo = ifelse(is.na(empty_geo), TRUE, empty_geo)
         ) %>%
@@ -157,11 +158,10 @@ mod_admin_server <- function(id) {
     observeEvent(input$btn_add_escola, {
       req(input$codinep, input$nome_escola_busca, input$user_escola, input$senha_escola)
       
-      # 1. Verifica se o Cód. INEP já existe na base de dados
       escolas_ja_cadastradas <- dados_cadastrados()
       if (input$codinep %in% escolas_ja_cadastradas$codinep) {
         output$status_cadastro <- renderText("⚠️ Erro: Esta escola já está cadastrada no sistema.")
-        return() # Interrompe a execução para evitar o erro
+        return()
       }
       
       escola_selecionada <- escolas_base() %>%
@@ -170,44 +170,24 @@ mod_admin_server <- function(id) {
       
       nome_real_escola <- escola_selecionada$NO_ENTIDADE
       
-      # <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<< CORREÇÃO DA LÓGICA <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
-      # Define o nome final do município a ser usado no pré-processamento
-      nome_municipio_final <- escola_selecionada$final_muni_name
-      
-      # Se o município for desconhecido na base, exige a seleção manual e usa esse valor
-      if (nome_municipio_final == "Município Desconhecido") {
-        req(input$muni_manual_busca, message = "Por favor, selecione um município para a escola.")
-        nome_municipio_final <- input$muni_manual_busca
-      }
-      # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> FIM DA CORREÇÃO >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
-      
       tryCatch({
-        save_escola_to_db(
+        showNotification("Iniciando pré-processamento... Isso pode levar alguns minutos.", type = "message", duration = 10)
+        
+        # A chamada para a função de pré-processamento está correta
+        preprocessar_escola(
           codinep = input$codinep,
-          nome = nome_real_escola,
-          user = input$user_escola,
-          pass = input$senha_escola
+          lat = if (input$mostrar_geo_manual == "TRUE") input$lat_manual else NULL,
+          lon = if (input$mostrar_geo_manual == "TRUE") input$lon_manual else NULL
         )
         
+        # Salva no banco de dados (agora a função será encontrada)
+        save_escola_to_db(input$codinep, nome_real_escola, input$user_escola, input$senha_escola)
         dados_cadastrados(get_escolas_from_db())
         
-        usar_geo_manual <- input$mostrar_geo_manual == "TRUE" &&
-          !is.na(input$lat_manual) &&
-          !is.na(input$lon_manual)
+        output$status_cadastro <- renderText("✅ Escola cadastrada e dados gerados com sucesso!")
         
-        tryCatch({
-          if (usar_geo_manual) {
-            preprocessar_escola(input$codinep, lat = input$lat_manual, lon = input$lon_manual, nome_muni_manual = nome_municipio_final)
-          } else {
-            # Passa o nome do município para a função de pré-processamento
-            preprocessar_escola(input$codinep, nome_muni_manual = nome_municipio_final)
-          }
-          output$status_cadastro <- renderText("✅ Escola cadastrada e dados gerados com sucesso!")
-        }, error = function(e_proc) {
-          output$status_cadastro <- renderText(paste("⚠️ Escola cadastrada, mas houve erro ao gerar os dados:\n", e_proc$message))
-        })
-      }, error = function(e_main) {
-        output$status_cadastro <- renderText(paste("❌ Erro ao cadastrar escola:\n", e_main$message))
+      }, error = function(e_proc) {
+        output$status_cadastro <- renderText(paste("⚠️ Erro ao gerar os dados da escola:\n", e_proc$message))
       })
     })
     
@@ -228,14 +208,12 @@ mod_admin_server <- function(id) {
     observeEvent(input$btn_delete_escola, {
       req(input$escola_a_excluir)
       
-      cod_a_excluir <- input$escola_a_excluir
-      
       tryCatch({
-        delete_escola_from_db(cod_a_excluir)
+        delete_escola_from_db(input$escola_a_excluir)
         dados_cadastrados(get_escolas_from_db())
-        output$status_exclusao <- renderText(paste("✅ Escola com Cód. INEP", cod_a_excluir, "foi excluída com sucesso."))
+        output$status_exclusao <- renderText("✅ Escola excluída com sucesso.")
       }, error = function(e) {
-        output$status_exclusao <- renderText(paste("❌ Erro ao excluir escola:\n", e$message))
+        output$status_exclusao <- renderText(paste("❌ Erro ao excluir escola:", e$message))
       })
     })
     

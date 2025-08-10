@@ -1,0 +1,266 @@
+========== DIAGNÓSTICO APP ESCOLAS ==========
+Data/Hora:  2025-08-09 20:26:12 -03 
+
+--- Session/Versões ---
+[1] "R version 4.3.1 (2023-06-16 ucrt)"
+      sf    dplyr      DBI  RSQLite    readr  stringr    tidyr 
+"1.0.21"  "1.1.4"  "1.2.3"  "2.4.2"  "2.1.5"  "1.5.1"  "1.3.1" 
+
+--- Estrutura de pastas (nível 2) ---
+.
+├── app
+├── app.R
+├── config
+│   └── database.sqlite
+├── data
+│   ├── app
+│   │   └── setor_2025_ready.rds
+│   ├── backups
+│   │   ├── escolas_geocodificadas_coords.csv
+│   │   └── escolas_geocodificadas_df.rds
+│   ├── censo.csv
+│   ├── censo_2024
+│   │   └── microdados_censo_escolar_2024
+│   ├── censo_ibge_2022
+│   │   ├── Agregados_preliminares_por_setores_censitarios_BR
+│   │   ├── Agregados_preliminares_por_setores_censitarios_BR.zip
+│   │   └── shape_files
+│   ├── data
+│   │   └── _debug
+│   ├── enem_consolidados.RData
+│   ├── escolas
+│   │   ├── 33150109.rds
+│   │   ├── 35009758.rds
+│   │   ├── 35104985.rds
+│   │   ├── 35104991.rds
+│   │   └── 35568036.rds
+│   ├── escolas_geocodificadas_df.rds
+│   ├── escolas_geo_com_empty_flag.rds
+│   ├── escolas_privadas_nomelista.rds
+│   ├── external
+│   │   ├── fatores_uf_2018proj_2022_2025.csv
+│   │   ├── fatores_uf_2022_2025_from_proj.csv
+│   │   └── projecoes_2024_tab1_idade_simples.xlsx
+│   ├── INSE_2021_escolas.xlsx
+│   ├── INSE_2021_municipios.xlsx
+│   ├── microdados_enem_2024
+│   │   ├── DADOS
+│   │   ├── DICIONÁRIO
+│   │   ├── INPUTS
+│   │   ├── LEIA-ME E DOCUMENTOS TÉCNICOS
+│   │   └── PROVAS E GABARITOS
+│   ├── municipios_br.rds
+│   ├── municipios_lookup.rds
+│   ├── processed
+│   │   ├── censo2022_setor_features_min.csv
+│   │   ├── censo2022_setor_features_min.rds
+│   │   ├── censo2022_universo_municipio.csv
+│   │   ├── censo2022_universo_municipio.rds
+│   │   ├── censo2022_universo_setor.gpkg
+│   │   ├── censo2022_universo_setor.rds
+│   │   ├── censo2022_universo_setor_joined_clean.gpkg
+│   │   ├── escolas_privadas_unificadas.gpkg
+│   │   ├── escolas_privadas_unificadas_sf.rds
+│   │   ├── fatores_uf_2022_2025_from_proj.csv
+│   │   ├── nowcast_setor_2025.csv
+│   │   ├── nowcast_setor_2025.rds
+│   │   └── setores_slim.gpkg
+│   ├── raw
+│   │   ├── Agregados_preliminares_por_setores_censitarios_BR.csv
+│   │   ├── BR_Malha_Preliminar_2022.cpg
+│   │   ├── BR_Malha_Preliminar_2022.dbf
+│   │   ├── BR_Malha_Preliminar_2022.prj
+│   │   ├── BR_Malha_Preliminar_2022.shp
+│   │   ├── BR_Malha_Preliminar_2022.shx
+│   │   ├── ibge_ftp
+│   │   └── malha_setores_2022
+│   └── _debug
+│       ├── agregados_head.csv
+│       ├── amostra_agreg_core.csv
+│       ├── censo2022_dic_variaveis.csv
+│       ├── diagnostico_join_censo2022.rds
+│       ├── dicionario_censo2022.csv
+│       ├── join_teste_setores_amostra.gpkg
+│       ├── muni_top_diferencas.csv
+│       ├── setores_head.gpkg
+│       └── setores_sem_match_por_UF.csv
+├── logs
+│   └── diagnostico_20250809-202612.txt
+├── modules
+│   ├── mod_admin.R
+│   ├── mod_auth.R
+│   ├── mod_chat.R
+│   └── mod_escola.R
+├── Projeto APP Escolas.Rproj
+├── ReadME.txt
+├── renv
+│   ├── activate.R
+│   ├── library
+│   │   ├── R-4.3
+│   │   └── R-4.5
+│   ├── settings.json
+│   └── staging
+├── renv.lock
+├── scripts
+│   └── diagnostico_app_escolas.R
+├── utils
+│   ├── create_municipality_lookup.R
+│   ├── db_utils.R
+│   ├── IBGE_UTILS_CENSO.R
+│   ├── openai_utils.R
+│   ├── pipe_line_censo_geo.R
+│   ├── preprocess_utils.R
+│   ├── script.R
+│   ├── testar_censo2022.R
+│   └── test_data_connections.R
+└── www
+    └── styles.css
+app                                                                        app.R                                                                      
+config                                                                     config/database.sqlite                                                     
+data                                                                       data/app                                                                   
+data/app/setor_2025_ready.rds                                              data/backups                                                               
+data/backups/escolas_geocodificadas_coords.csv                             data/backups/escolas_geocodificadas_df.rds                                 
+data/censo.csv                                                             data/censo_2024                                                            
+data/censo_2024/microdados_censo_escolar_2024                              data/censo_ibge_2022                                                       
+data/censo_ibge_2022/Agregados_preliminares_por_setores_censitarios_BR     data/censo_ibge_2022/Agregados_preliminares_por_setores_censitarios_BR.zip 
+data/censo_ibge_2022/shape_files                                           data/data                                                                  
+data/data/_debug                                                           data/enem_consolidados.RData                                               
+data/escolas                                                               data/escolas/33150109.rds                                                  
+data/escolas/35009758.rds                                                  data/escolas/35104985.rds                                                  
+data/escolas/35104991.rds                                                  data/escolas/35568036.rds                                                  
+data/escolas_geocodificadas_df.rds                                         data/escolas_geo_com_empty_flag.rds                                        
+data/escolas_privadas_nomelista.rds                                        data/external                                                              
+data/external/fatores_uf_2018proj_2022_2025.csv                            data/external/fatores_uf_2022_2025_from_proj.csv                           
+data/external/projecoes_2024_tab1_idade_simples.xlsx                       data/INSE_2021_escolas.xlsx                                                
+data/INSE_2021_municipios.xlsx                                             data/microdados_enem_2024                                                  
+data/microdados_enem_2024/DADOS                                            data/microdados_enem_2024/DICIONÁRIO                                       
+data/microdados_enem_2024/INPUTS                                           data/microdados_enem_2024/LEIA-ME E DOCUMENTOS TÉCNICOS                    
+data/microdados_enem_2024/PROVAS E GABARITOS                               data/municipios_br.rds                                                     
+data/municipios_lookup.rds                                                 data/processed                                                             
+data/processed/censo2022_setor_features_min.csv                            data/processed/censo2022_setor_features_min.rds                            
+data/processed/censo2022_universo_municipio.csv                            data/processed/censo2022_universo_municipio.rds                            
+data/processed/censo2022_universo_setor.gpkg                               data/processed/censo2022_universo_setor.rds                                
+data/processed/censo2022_universo_setor_joined_clean.gpkg                  data/processed/escolas_privadas_unificadas.gpkg                            
+data/processed/escolas_privadas_unificadas_sf.rds                          data/processed/fatores_uf_2022_2025_from_proj.csv                          
+data/processed/nowcast_setor_2025.csv                                      data/processed/nowcast_setor_2025.rds                                      
+data/processed/setores_slim.gpkg                                           data/raw                                                                   
+data/raw/Agregados_preliminares_por_setores_censitarios_BR.csv             data/raw/BR_Malha_Preliminar_2022.cpg                                      
+data/raw/BR_Malha_Preliminar_2022.dbf                                      data/raw/BR_Malha_Preliminar_2022.prj                                      
+data/raw/BR_Malha_Preliminar_2022.shp                                      data/raw/BR_Malha_Preliminar_2022.shx                                      
+data/raw/ibge_ftp                                                          data/raw/malha_setores_2022                                                
+data/_debug                                                                data/_debug/agregados_head.csv                                             
+data/_debug/amostra_agreg_core.csv                                         data/_debug/censo2022_dic_variaveis.csv                                    
+data/_debug/diagnostico_join_censo2022.rds                                 data/_debug/dicionario_censo2022.csv                                       
+data/_debug/join_teste_setores_amostra.gpkg                                data/_debug/muni_top_diferencas.csv                                        
+data/_debug/setores_head.gpkg                                              data/_debug/setores_sem_match_por_UF.csv                                   
+logs                                                                       logs/diagnostico_20250809-202612.txt                                       
+modules                                                                    modules/mod_admin.R                                                        
+modules/mod_auth.R                                                         modules/mod_chat.R                                                         
+modules/mod_escola.R                                                       Projeto APP Escolas.Rproj                                                  
+ReadME.txt                                                                 renv                                                                       
+renv/activate.R                                                            renv/library                                                               
+renv/library/R-4.3                                                         renv/library/R-4.5                                                         
+renv/settings.json                                                         renv/staging                                                               
+renv.lock                                                                  scripts                                                                    
+scripts/diagnostico_app_escolas.R                                          utils                                                                      
+utils/create_municipality_lookup.R                                         utils/db_utils.R                                                           
+utils/IBGE_UTILS_CENSO.R                                                   utils/openai_utils.R                                                       
+utils/pipe_line_censo_geo.R                                                utils/preprocess_utils.R                                                   
+utils/script.R                                                             utils/testar_censo2022.R                                                   
+utils/test_data_connections.R                                              www                                                                        
+www/styles.css                                                             
+
+--- Arquivos esperados ---
+✔ data/escolas_privadas_nomelista.rds (3.36M / 2025-07-30 11:15:53)
+✔ data/processed/escolas_privadas_unificadas_sf.rds (753K / 2025-08-09 18:08:42.794026)
+✔ data/municipios_lookup.rds (96.1K / 2025-07-30 11:14:28)
+✔ data/processed/censo2022_universo_setor_joined_clean.gpkg (1.3G / 2025-08-09 16:59:19.148712)
+✔ data/processed/censo2022_universo_municipio.rds (116K / 2025-08-09 17:15:27.505996)
+✔ data/enem_consolidados.RData (1.4M / 2025-08-05 14:40:19)
+
+[1] nomes_df
+nrow:  215545  | cols:  CO_ENTIDADE, NO_ENTIDADE, nome_municipio 
+!!  nomes_df sem CO_MUNICIPIO/NO_MUNICIPIO — labels do select e filtro por município podem falhar. 
+
+[2] geo_sf (unificado)
+[1] "sf"         "data.frame"
+[1] POINT
+18 Levels: GEOMETRY POINT LINESTRING POLYGON MULTIPOINT MULTILINESTRING MULTIPOLYGON GEOMETRYCOLLECTION CIRCULARSTRING COMPOUNDCURVE ... TRIANGLE
+CRS: Coordinate Reference System:
+  User input: EPSG:4674 
+  wkt:
+GEOGCRS["SIRGAS 2000",
+    DATUM["Sistema de Referencia Geocentrico para las AmericaS 2000",
+        ELLIPSOID["GRS 1980",6378137,298.257222101,
+            LENGTHUNIT["metre",1]]],
+    PRIMEM["Greenwich",0,
+        ANGLEUNIT["degree",0.0174532925199433]],
+    CS[ellipsoidal,2],
+        AXIS["geodetic latitude (Lat)",north,
+            ORDER[1],
+            ANGLEUNIT["degree",0.0174532925199433]],
+        AXIS["geodetic longitude (Lon)",east,
+            ORDER[2],
+            ANGLEUNIT["degree",0.0174532925199433]],
+    USAGE[
+        SCOPE["Horizontal component of 3D system."],
+        AREA["Latin America - Central America and South America - onshore and offshore. Brazil - onshore and offshore."],
+        BBOX[-59.87,-122.19,32.72,-25.28]],
+    ID["EPSG",4674]]
+nrow: 42007  | NAs geometry: 0 
+
+[3] municipios_lookup.rds
+nrow: 5570  | cols: id_municipio, nome_municipio, sigla_uf, display_name 
+
+[4] censo2022_universo_setor_joined_clean.gpkg
+nrow: 452340  | geom: MULTIPOLYGON 
+Coordinate Reference System:
+  User input: SIRGAS 2000 
+  wkt:
+GEOGCRS["SIRGAS 2000",
+    DATUM["D_unnamed",
+        ELLIPSOID["GRS_1980_EPSG_ID_7019",6378137,298.257222101,
+            LENGTHUNIT["metre",1,
+                ID["EPSG",9001]]]],
+    PRIMEM["Greenwich",0,
+        ANGLEUNIT["Degree",0.0174532925199433]],
+    CS[ellipsoidal,2],
+        AXIS["longitude",east,
+            ORDER[1],
+            ANGLEUNIT["Degree",0.0174532925199433]],
+        AXIS["latitude",north,
+            ORDER[2],
+            ANGLEUNIT["Degree",0.0174532925199433]]]
+tam_total_0_17        pop_0_4        pop_5_9      pop_10_14      pop_15_17 alfabet_15mais      dpp_total           geom 
+             0              0              0              0              0              0              0              0 
+
+[5] censo2022_universo_municipio.rds
+nrow: 5572  | cols: cod_municipio_ibge, tam_total_0_17, pop_0_4, pop_5_9, pop_10_14, pop_15_17, alfabet_15mais, dpp_total 
+
+[6] ENEM data/enem_consolidados.RData
+Objetos carregados: enem_consoliado_municipio, enem_consolidado_escola 
+!!  Possível typo: objeto 'enem_consoliado_municipio' (sem 'd'). Funções esperam 'enem_consolidado_municipio'? 
+
+--- Banco de dados (config/database.sqlite) ---
+Tabelas: escola_concorrentes, escolas, users 
+users: 4 linhas | cols: user, pass, role, codinep
+escolas: 3 linhas | cols: codinep, nome, user, pass
+escola_concorrentes: 0 linhas | cols: codinep_principal, codinep_concorrente
+
+--- Amostragem de data/escolas/*.rds ---
+data/escolas/33150109.rds data/escolas/35009758.rds data/escolas/35104985.rds data/escolas/35104991.rds data/escolas/35568036.rds 
+Lendo amostra:  data/escolas/33150109.rds 
+lista_concorrentes class:  data.frame 
+!!  lista_concorrentes não é 'sf' — o mapa cairá. Ajustar preprocessar_escola para manter geometry. 
+
+--- Chat/IA ---
+OK: modules/mod_chat.R presente.
+OK: utils/openai_utils.R presente.
+
+========== RESUMO ==========
+⚠️ Encontramos 3 ponto(s) de atenção:
+ 1) nomes_df sem CO_MUNICIPIO/NO_MUNICIPIO — labels do select e filtro por município podem falhar.
+ 2) Possível typo: objeto 'enem_consoliado_municipio' (sem 'd'). Funções esperam 'enem_consolidado_municipio'?
+ 3) lista_concorrentes não é 'sf' — o mapa cairá. Ajustar preprocessar_escola para manter geometry.
+
+Fim. Log salvo em:  logs/diagnostico_20250809-202612.txt 

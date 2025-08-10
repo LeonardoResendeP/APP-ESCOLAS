@@ -1,4 +1,159 @@
-# --- FUNÇÕES AUXILIARES DE BUSCA DE DADOS ---
+# =========================================================
+#   ARQUIVO DE FUNÇÕES AUXILIARES PARA PRÉ-PROCESSAMENTO
+# =========================================================
+
+suppressPackageStartupMessages({
+  library(dplyr)
+  library(sf)
+  library(stringr)
+  library(readr)
+  library(DBI)
+  library(bigrquery)
+  library(basedosdados)
+  library(glue)
+  library(geosphere)
+})
+
+# ---
+# NOVA SEÇÃO: Análise de Território
+# ---
+
+analisar_territorio <- function(escolas_sf, setores_sf) {
+  old_s2 <- sf::sf_use_s2()          # guarda estado
+  on.exit(sf::sf_use_s2(old_s2), add = TRUE)
+  sf::sf_use_s2(TRUE)                # usa geodésico
+  
+  if (sf::st_crs(escolas_sf) != sf::st_crs(setores_sf)) {
+    escolas_sf <- sf::st_transform(escolas_sf, sf::st_crs(setores_sf))
+  }
+  
+  escolas_com_setor <- sf::st_join(escolas_sf, setores_sf, join = sf::st_intersects)
+  
+  dados_territorio <- escolas_com_setor %>%
+    sf::st_drop_geometry() %>%
+    dplyr::select(
+      id_escola = id_escola,
+      cd_setor,
+      mercado_infantil_0_4       = pop_0_4,
+      mercado_fundamental1_5_9   = pop_5_9,
+      mercado_fundamental2_10_14 = pop_10_14,
+      mercado_medio_15_17        = pop_15_17,
+      mercado_total_0_17         = tam_total_0_17,
+      contexto_alfabet_15mais    = alfabet_15mais,
+      contexto_domicilios_pp     = dpp_total
+    ) %>%
+    dplyr::mutate(dplyr::across(dplyr::matches("^(mercado_|contexto_)"),
+                                ~ suppressWarnings(as.numeric(.x))))
+  dados_territorio
+}
+
+# ---
+# FUNÇÃO PRINCIPAL DE PRÉ-PROCESSAMENTO (CORRIGIDA E INTEGRADA)
+# ---
+
+preprocessar_escola <- function(codinep, lat = NULL, lon = NULL) {
+  
+  codinep <- as.character(codinep)
+  cat("\n\U0001F504 Iniciando processamento da escola:", codinep, "\n")
+  
+  cat("--- Carregando bases de dados unificadas ---\n")
+  nomes_df <- readRDS("data/escolas_privadas_nomelista.rds")
+  geo_sf <- readRDS("data/processed/escolas_privadas_unificadas_sf.rds")
+  municipios_lookup <- readRDS("data/municipios_lookup.rds")
+  
+  escolas_unificadas_sf <- geo_sf %>%
+    left_join(nomes_df, by = c("id_escola" = "CO_ENTIDADE")) %>%
+    left_join(municipios_lookup, by = "nome_municipio") %>%
+    rename(CO_MUNICIPIO = id_municipio)
+  
+  setores_com_dados_sf  <- sf::st_read("data/processed/censo2022_universo_setor_joined_clean.gpkg", quiet = TRUE)
+  
+  escola_principal_info <- escolas_unificadas_sf %>%
+    filter(id_escola == codinep) %>%
+    slice(1)
+  
+  if (nrow(escola_principal_info) == 0) {
+    stop(paste("ERRO: Código INEP", codinep, "não encontrado na base de dados unificada."))
+  }
+  
+  if (!is.null(lat) && !is.null(lon) && !is.na(lat) && !is.na(lon)) {
+    cat("--- Usando coordenadas manuais fornecidas pelo admin ---\n")
+    new_geom <- sf::st_sfc(sf::st_point(c(lon, lat)), crs = sf::st_crs(escolas_unificadas_sf))
+    sf::st_geometry(escola_principal_info) <- new_geom
+  }
+  
+  nome_escola <- escola_principal_info$NO_ENTIDADE
+  id_muni_bq  <- as.character(escola_principal_info$CO_MUNICIPIO)
+  nome_muni   <- escola_principal_info$nome_municipio
+  
+  cat("--- Identificando concorrentes mais próximos ---\n")
+  concorrentes_finais <- escolas_unificadas_sf %>%
+    mutate(CO_MUNICIPIO = as.character(CO_MUNICIPIO)) %>%
+    filter(CO_MUNICIPIO == id_muni_bq, id_escola != codinep, !sf::st_is_empty(.)) %>%
+    mutate(
+      dist_metros = as.numeric(sf::st_distance(sf::st_geometry(.), sf::st_geometry(escola_principal_info)))
+    ) %>%
+    arrange(dist_metros) %>%
+    slice(1:5)
+  
+  ids_concorrentes_proximos <- concorrentes_finais$id_escola
+  
+  escolas_para_analise_sf <- bind_rows(escola_principal_info, concorrentes_finais)
+  
+  dados_territorio_full <- analisar_territorio(escolas_para_analise_sf, setores_com_dados_sf)
+  
+  dados_territorio_escola <- dados_territorio_full %>%
+    filter(id_escola == codinep)
+  
+  dados_territorio_concorrentes_media <- dados_territorio_full %>%
+    filter(id_escola %in% ids_concorrentes_proximos) %>%
+    summarise(across(where(is.numeric), ~ mean(.x, na.rm = TRUE)))
+  
+  dados_processados_bg <- reprocessar_dados_concorrentes(codinep, ids_concorrentes_proximos, id_muni_bq)
+  
+  # --- Consolidando e salvando resultado final (substituir bloco atual) ---
+  # garantir mesmo CRS para a extração de lat/lon do leaflet (WGS84)
+  escola_principal_wgs84 <- tryCatch(
+    sf::st_transform(escola_principal_info, 4326),
+    error = function(e) escola_principal_info
+  )
+  
+  resultado <- list(
+    id_escola      = codinep, 
+    nome_escola    = nome_escola, 
+    id_municipio   = id_muni_bq,
+    nome_municipio = nome_muni, 
+    latitude       = sf::st_coordinates(escola_principal_wgs84)[, "Y"], 
+    longitude      = sf::st_coordinates(escola_principal_wgs84)[, "X"],
+    
+    # >>> manter geometry aqui <<<
+    lista_concorrentes = concorrentes_finais %>% 
+      dplyr::select(id_escola, nome_escola = NO_ENTIDADE, dist_metros, geometry),
+    
+    dados_propria_escola        = dados_processados_bg$dados_propria_escola,
+    dados_concorrentes_proximos = dados_processados_bg$dados_concorrentes_proximos,
+    dados_mercado_municipio     = dados_processados_bg$dados_mercado_municipio,
+    dados_infraestrutura        = dados_processados_bg$dados_infraestrutura,
+    dados_enem_areas            = dados_processados_bg$dados_enem_areas,
+    dados_enem_redacao          = dados_processados_bg$dados_enem_redacao,
+    
+    dados_territorio_escola             = dados_territorio_escola,
+    dados_territorio_concorrentes_media = dados_territorio_concorrentes_media,
+    
+    data_extracao = Sys.time()
+  )
+  
+  dir.create("data/escolas", recursive = TRUE, showWarnings = FALSE)
+  path_out <- file.path("data", "escolas", paste0(codinep, ".rds"))
+  saveRDS(resultado, path_out)
+  cat("\U00002705 Dados processados e salvos com sucesso em:", path_out, "\n")
+  
+  return(TRUE)
+}
+
+# ---
+# FUNÇÕES DE BUSCA DE DADOS (EXISTENTES)
+# ---
 
 fetch_infra_data <- function(codigos_inep, id_municipio, ano, bq_connection) {
   
@@ -69,11 +224,21 @@ fetch_infra_data <- function(codigos_inep, id_municipio, ano, bq_connection) {
   return(resultados_finais)
 }
 
-# <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<< INÍCIO DA CORREÇÃO <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+get_enem_municipio_df <- function(env) {
+  # aceita 'enem_consoliado_municipio' (typo) ou 'enem_consolidado_municipio'
+  if (exists("enem_consoliado_municipio", envir = env)) {
+    return(get("enem_consoliado_municipio", envir = env))
+  } else if (exists("enem_consolidado_municipio", envir = env)) {
+    return(get("enem_consolidado_municipio", envir = env))
+  } else {
+    stop("Objeto de ENEM municipal não encontrado no .RData (nem 'enem_consoliado_municipio' nem 'enem_consolidado_municipio').")
+  }
+}
+
 processar_enem_local <- function(codinep, ids_concorrentes, id_municipio) {
   cat("--- Processando dados do ENEM a partir de arquivo local ---\n")
-  
-  load("data/enem_consolidados.RData")
+  e <- new.env(parent = emptyenv())
+  load("data/enem_consolidados.RData", envir = e)
   
   codinep_num <- as.numeric(codinep)
   ids_concorrentes_num <- as.numeric(ids_concorrentes)
@@ -83,18 +248,20 @@ processar_enem_local <- function(codinep, ids_concorrentes, id_municipio) {
     mutate(CO_ENTIDADE = as.character(CO_ENTIDADE)) %>%
     select(id_escola = CO_ENTIDADE, nome_escola = NO_ENTIDADE)
   
-  dados_individuais <- enem_consolidado_escola %>%
+  dados_individuais <- e$enem_consolidado_escola %>%
     filter(CO_ESCOLA %in% c(codinep_num, ids_concorrentes_num)) %>%
     mutate(id_escola = as.character(CO_ESCOLA))
   
+  enem_muni_df <- get_enem_municipio_df(e)
+  
   concorrentes_encontrados <- dados_individuais %>% filter(id_escola %in% ids_concorrentes)
-  num_encontrados <- n_distinct(concorrentes_encontrados$id_escola)
+  num_encontrados <- dplyr::n_distinct(concorrentes_encontrados$id_escola)
   
   dados_concorrentes_media <- concorrentes_encontrados %>%
     summarise(across(starts_with("NU_NOTA"), ~ mean(.x, na.rm = TRUE))) %>%
     mutate(id_escola = "Média Concorrentes")
   
-  dados_municipio_media <- enem_consoliado_municipio %>%
+  dados_municipio_media <- enem_muni_df %>%
     filter(CO_MUNICIPIO_ESC == id_municipio_num) %>%
     mutate(id_escola = "Média Municipal") %>%
     select(-CO_MUNICIPIO_ESC)
@@ -148,9 +315,7 @@ processar_enem_local <- function(codinep, ids_concorrentes, id_municipio) {
   
   return(list(areas = df_areas, redacao = df_redacao))
 }
-# >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> FIM DA CORREÇÃO >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
 
-# --- FUNÇÃO DE REPROCESSAMENTO (CHAMADA SOB DEMANDA) ---
 reprocessar_dados_concorrentes <- function(codinep, ids_concorrentes, id_municipio) {
   
   cat("--- Iniciando busca de dados para a escola", codinep, "e seus concorrentes ---\n")
@@ -234,89 +399,4 @@ reprocessar_dados_concorrentes <- function(codinep, ids_concorrentes, id_municip
       dados_enem_redacao = dados_enem_local$redacao
     )
   )
-}
-
-# --- FUNÇÃO PRINCIPAL DE PRÉ-PROCESSAMENTO ---
-preprocessar_escola <- function(codinep, lat = NULL, lon = NULL, nome_muni_manual = NULL) {
-  
-  suppressMessages({
-    if (!require(pacman)) install.packages("pacman");
-    pacman::p_load(DBI, bigrquery, basedosdados, tidyverse, sf, glue, geosphere)
-  })
-  
-  codinep <- as.character(codinep)
-  cat("\n\U0001F504 Iniciando processamento da escola:", codinep, "\n")
-  
-  nomes_all <- readRDS("data/escolas_privadas_nomelista.rds") %>% dplyr::mutate(CO_ENTIDADE = as.character(CO_ENTIDADE))
-  geo_all_sf <- readRDS("data/escolas_geo_com_empty_flag.rds")
-  geo_all_df <- sf::st_drop_geometry(geo_all_sf) %>%
-    dplyr::mutate(code_school = as.character(code_school))
-  
-  nome_escola <- nomes_all %>% dplyr::filter(CO_ENTIDADE == codinep) %>% dplyr::pull(NO_ENTIDADE) %>% first()
-  if (is.na(nome_escola)) nome_escola <- "N/D"
-  
-  cat("\U0001F30E Verificando geolocalização e concorrentes...\n")
-  
-  if (!is.null(nome_muni_manual) && nzchar(nome_muni_manual)) {
-    nome_muni <- nome_muni_manual
-    geo_escola <- geo_all_df %>% dplyr::filter(code_school == codinep)
-    if (is.null(lat) || is.null(lon)) {
-      lat <- if (nrow(geo_escola) > 0 && !is.na(geo_escola$latitude[1])) geo_escola$latitude[1] else NA
-      lon <- if (nrow(geo_escola) > 0 && !is.na(geo_escola$longitude[1])) geo_escola$longitude[1] else NA
-    }
-  } else if (is.null(lat) || is.null(lon)) {
-    geo_escola <- geo_all_df %>% dplyr::filter(code_school == codinep)
-    if (nrow(geo_escola) == 0 || is.na(geo_escola$latitude) || is.na(geo_escola$longitude) || is.na(geo_escola$name_muni)) {
-      stop("Geolocalização para a escola principal não encontrada.")
-    }
-    lat <- geo_escola$latitude[1]; lon <- geo_escola$longitude[1]; nome_muni <- geo_escola$name_muni[1]
-  } else {
-    geo_escola <- geo_all_df %>% dplyr::filter(code_school == codinep)
-    nome_muni <- geo_escola$name_muni[1]
-    if(is.na(nome_muni)) stop("Não foi possível determinar o município da escola.")
-  }
-  
-  municipios_lookup_df <- readRDS("data/municipios_lookup.rds")
-  id_muni_bq <- municipios_lookup_df %>% filter(nome_municipio == nome_muni) %>% pull(id_municipio) %>% first()
-  if(is.na(id_muni_bq)) stop("Não foi possível obter o ID do município.")
-  
-  concorrentes_locais <- geo_all_df %>%
-    dplyr::filter(name_muni == nome_muni, code_school != codinep)
-  concorrentes_com_nomes <- concorrentes_locais %>%
-    dplyr::left_join(nomes_all, by = c("code_school" = "CO_ENTIDADE"))
-  if (nrow(concorrentes_com_nomes %>% filter(!is.na(latitude), !is.na(longitude))) > 0 && !is.na(lat) && !is.na(lon)) {
-    concorrentes_finais <- concorrentes_com_nomes %>%
-      filter(!is.na(latitude), !is.na(longitude)) %>%
-      dplyr::mutate(dist_metros = distHaversine(matrix(c(lon, lat), nrow=1), matrix(c(longitude, latitude), ncol=2))) %>%
-      dplyr::arrange(dist_metros) %>%
-      dplyr::slice(1:5)
-  } else {
-    concorrentes_finais <- concorrentes_com_nomes %>%
-      dplyr::arrange(NO_ENTIDADE) %>%
-      dplyr::slice(1:5) %>%
-      mutate(dist_metros = NA)
-  }
-  ids_concorrentes_proximos <- concorrentes_finais$code_school
-  
-  dados_processados <- reprocessar_dados_concorrentes(codinep, ids_concorrentes_proximos, id_muni_bq)
-  
-  resultado <- list(
-    id_escola = codinep, nome_escola = nome_escola, id_municipio = id_muni_bq,
-    nome_municipio = nome_muni, latitude = lat, longitude = lon,
-    lista_concorrentes = concorrentes_finais %>% 
-      dplyr::select(id_escola = code_school, nome_escola = NO_ENTIDADE, latitude, longitude, dist_metros),
-    dados_propria_escola = dados_processados$dados_propria_escola,
-    dados_concorrentes_proximos = dados_processados$dados_concorrentes_proximos,
-    dados_mercado_municipio = dados_processados$dados_mercado_municipio,
-    dados_infraestrutura = dados_processados$dados_infraestrutura,
-    dados_enem_areas = dados_processados$dados_enem_areas,
-    dados_enem_redacao = dados_processados$dados_enem_redacao,
-    data_extracao = Sys.time()
-  )
-  
-  dir.create("data/escolas", recursive = TRUE, showWarnings = FALSE)
-  path_out <- file.path("data", "escolas", paste0(codinep, ".rds"))
-  saveRDS(resultado, path_out)
-  cat("\U00002705 Dados processados e salvos com sucesso em:", path_out, "\n")
-  return(TRUE)
 }

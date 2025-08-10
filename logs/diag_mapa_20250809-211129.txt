@@ -1,0 +1,32 @@
+========== DIAGNÓSTICO MAPA ==========
+Data/Hora: 2025-08-09 21:11:29.707406 
+
+Sem codinep informado: usando o .rds mais recente:
+   data/escolas/35104991.rds 
+
+✔ Campos essenciais presentes no .rds
+
+--- Coordenadas escola principal ---
+lat: -23.5785  | lon: -46.64168 
+lat ok?  TRUE 
+lon ok?  TRUE 
+
+--- lista_concorrentes ---
+classe: sf, data.frame  | nrow: 5 
+conc_sf nrow após limpeza: 5 
+st_is_empty NA count: 0 
+
+--- BBOX ---
+bbox: xmin -46.6434789 | ymin -23.5790043 | xmax -46.6408569 | ymax -23.5785026 
+bbox finito?  TRUE 
+
+--- Teste de tiles ---
+Consegue baixar tile OSM?  TRUE 
+
+--- Preview htmlwidgets ---
+Preview salvo em: logs/diag_mapa_preview_20250809-211129.html 
+
+--- CSS ---
+styles.css tem regras 'leaflet'?  FALSE 
+
+========== FIM DIAGNÓSTICO ==========
