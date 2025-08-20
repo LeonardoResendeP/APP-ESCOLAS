@@ -1,0 +1,194 @@
+---
+title: "Relatório Executivo — Rabbit"
+lang: pt-BR
+output:
+  html_document:
+    self_contained: true
+    df_print: default
+params:
+  meta:
+    value:
+      nome_escola: "N/D"
+      municipio: "N/D"
+      data_ref: !r format(Sys.Date(), "%d/%m/%Y")
+      logo_path: ""            # (abs) opcional
+      qr_path: ""              # (abs) opcional
+      concorrentes_line: ""    # string já formatada (todos)
+  kpis:
+    value:
+      matriculas_var_total: "—"
+      enem_media: "—"
+      enem_delta_conc: ""      # string vazia quando sem dado
+  tabelas:
+    value:
+      matriculas: !r data.frame()
+      enem_areas: !r data.frame()
+  figuras:
+    value:
+      grafico_path: ""         # (abs)
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo=FALSE, warning=FALSE, message=FALSE)
+library(knitr)
+library(kableExtra)
+
+fmt_int  <- function(x) ifelse(is.na(x), "—", formatC(as.integer(x), format="d", big.mark=".", decimal.mark=","))
+fmt_num1 <- function(x) ifelse(is.na(x), "—", format(round(as.numeric(x),1), nsmall=1, decimal.mark=","))
+nzchr <- function(x) !is.null(x) && length(x)==1 && !is.na(x) && isTRUE(nzchar(x))
+```
+
+<style>
+@page { size: A4; margin: 10mm; }
+* { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+body { font-family: -apple-system, Segoe UI, Roboto, Arial, sans-serif; color: #1f2937; font-size: 11.5px; }
+h1, h2, h3 { color: #1f2937; margin: 6px 0 4px; }
+small { color: #6b7280; }
+hr { border: 0; border-top: 2px solid #6A4CFF; margin: 6px 0 6px; }
+
+table { width: 100%; border-collapse: collapse; margin: 2px 0 6px; }
+th, td { border-bottom: 1px solid #e5e7eb; padding: 3px 6px; }
+th { text-transform: uppercase; font-size: 9.5px; color: #6b7280; text-align: left; }
+
+/* >>> NOVO: tabelas compactas com colgroup e números tabulares */
+table.compact { width:100%; border-collapse:collapse; table-layout: fixed; }
+table.compact th.n, table.compact td.n {
+  text-align: right;
+  white-space: nowrap;
+  /* forçar dígitos com largura fixa */
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1, "lnum" 1;
+  font-family: Segoe UI, Roboto, Arial, sans-serif;
+}
+/* larguras fixas p/ tabela de matrículas (1 + 5 colunas) */
+table.compact col.seg { width: 32%; }
+table.compact col.c1, table.compact col.c2, table.compact col.c3, table.compact col.c4, table.compact col.c5 { width: 13.6%; }
+
+/* larguras fixas p/ tabela ENEM por área (1 + 3 colunas) */
+table.compact col.area { width: 30%; }
+table.compact col.m1, table.compact col.m2, table.compact col.m3 { width: 23.333%; }
+
+img { display: block; }
+section, h2, h3, table, p { page-break-inside: avoid; }
+.kpi { display:inline-block; width: 49%; border:1px solid #e5e7eb; border-radius:10px; padding:8px; margin:2px 0; vertical-align:top; }
+.kpi .title { font-size:10px; color:#6b7280; text-transform:uppercase; letter-spacing:.04em; }
+.kpi .value { font-size:18px; font-weight:800; }
+.kpi .delta { font-size:11px; color:#6b7280; }
+.footer-note { display:flex; justify-content:space-between; align-items:flex-end; margin-top:6px; }
+.footer-note .right { text-align:right; }
+.cta { margin-top: 4px; font-weight:600; word-break: keep-all; white-space: normal; }
+</style>
+
+
+## Rabbit • Relatório Executivo (1 página)
+
+**Escola:** `r params$meta$nome_escola`    **Município:** `r params$meta$municipio`    **Data:** `r params$meta$data_ref`
+
+```{r logo, fig.align='right', out.width='85px'}
+path <- params$meta$logo_path
+if (!is.null(path) && length(path)==1 && !is.na(path) && nzchar(path) && file.exists(path)) {
+  knitr::include_graphics(path)
+}
+```
+
+**Concorrentes:** `r if (nzchr(params$meta$concorrentes_line)) params$meta$concorrentes_line else "—"`
+
+---
+
+### Indicadores-chave
+<div class="kpi">
+  <div class="title">Matrículas 23→24 (var%)</div>
+  <div class="value">`r params$kpis$matriculas_var_total`</div>
+  <div class="delta"><small>Base: Infantil + Fundamental + Médio</small></div>
+</div>
+<div class="kpi">
+  <div class="title">ENEM (média geral)</div>
+  <div class="value">`r params$kpis$enem_media`</div>
+  <div class="delta">`r if (nzchr(params$kpis$enem_delta_conc)) paste0("<small>| Δ vs conc.: ", params$kpis$enem_delta_conc,"</small>") else ""`</div>
+</div>
+
+### Matrículas por segmento (23→24)
+```{r mat_segmento, results='asis'}
+df <- params$tabelas$matriculas
+if (is.data.frame(df) && nrow(df)>0) {
+  df$`2023` <- fmt_int(df$`2023`); df$`2024` <- fmt_int(df$`2024`)
+  colnames(df) <- c("Segmento","2023","2024","Var% Esc.","Var% Conc.","Var% Mun.")
+  html <- '<table class="compact">
+  <colgroup><col class="seg"/><col class="c1"/><col class="c2"/><col class="c3"/><col class="c4"/><col class="c5"/></colgroup>
+  <thead><tr>
+    <th>Segmento</th><th class="n">2023</th><th class="n">2024</th>
+    <th class="n">Var% Esc.</th><th class="n">Var% Conc.</th><th class="n">Var% Mun.</th>
+  </tr></thead><tbody>'
+  for (i in seq_len(nrow(df))) {
+    html <- paste0(html, "<tr>",
+      "<td>", df$Segmento[i], "</td>",
+      "<td class='n'>", df$`2023`[i], "</td>",
+      "<td class='n'>", df$`2024`[i], "</td>",
+      "<td class='n'>", df$`Var% Esc.`[i], "</td>",
+      "<td class='n'>", df$`Var% Conc.`[i], "</td>",
+      "<td class='n'>", df$`Var% Mun.`[i], "</td>",
+    "</tr>")
+  }
+  html <- paste0(html, "</tbody></table>")
+  cat(html)
+} else {
+  cat("*Sem dados de matrículas por segmento.*")
+}
+```
+
+### ENEM — comparativo geral
+```{r grafico, fig.align='center', out.width='100%'}
+gpath <- params$figuras$grafico_path
+if (!is.null(gpath) && length(gpath)==1 && !is.na(gpath) && nzchar(gpath) && file.exists(gpath)) {
+  knitr::include_graphics(gpath)
+} else {
+  cat("*Sem gráfico disponível.*")
+}
+```
+
+### ENEM por área (média)
+```{r enem_area_tab, results='asis'}
+ea <- params$tabelas$enem_areas
+if (is.data.frame(ea) && nrow(ea)>0) {
+  ord <- c("Linguagens e Códigos","Matemática","Ciências Humanas","Ciências da Natureza","Redação")
+  if ("Área" %in% names(ea)) {
+    ea$Área <- factor(ea$Área, levels = ord); ea <- ea[order(ea$Área), , drop=FALSE]; ea$Área <- as.character(ea$Área)
+  }
+  for (cc in setdiff(colnames(ea), "Área")) ea[[cc]] <- fmt_num1(ea[[cc]])
+  colnames(ea) <- c("Área","Sua Escola","Média Concorrentes","Média Municipal")
+  html <- '<table class="compact">
+  <colgroup><col class="area"/><col class="m1"/><col class="m2"/><col class="m3"/></colgroup>
+  <thead><tr>
+    <th>Área</th><th class="n">Sua Escola</th><th class="n">Média Concorrentes</th><th class="n">Média Municipal</th>
+  </tr></thead><tbody>'
+  for (i in seq_len(nrow(ea))) {
+    html <- paste0(html, "<tr>",
+      "<td>", ea$`Área`[i], "</td>",
+      "<td class='n'>", ea$`Sua Escola`[i], "</td>",
+      "<td class='n'>", ea$`Média Concorrentes`[i], "</td>",
+      "<td class='n'>", ea$`Média Municipal`[i], "</td>",
+    "</tr>")
+  }
+  html <- paste0(html, "</tbody></table>")
+  cat(html)
+} else {
+  cat("*Sem dados por área.*")
+}
+```
+
+---
+
+<div class="footer-note">
+  <div class="cta">
+    Aponte a câmera para o QR e veja análises atualizadas todo mês no app Rabbit.
+  </div>
+  <div class="right">
+```{r qr, fig.align='right', out.width='70px'}
+qpath <- params$meta$qr_path
+if (!is.null(qpath) && length(qpath)==1 && !is.na(qpath) && nzchar(qpath) && file.exists(qpath)) {
+  knitr::include_graphics(qpath)
+}
+```
+    <small>Dados: Censo Escolar 2023–2024 • ENEM 2024 • Concorrentes = selecionados</small>
+  </div>
+</div>

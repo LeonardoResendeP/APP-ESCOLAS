@@ -40,14 +40,11 @@ mod_chat_server <- function(id, dados_escola) {
     
     output$chat_history <- renderUI({
       history <- chat_log()
-      lapply(history, function(msg) {
+      tagList(lapply(history, function(msg) {
         bubble_class <- if (msg$role == "user") "user-bubble" else "assistant-bubble"
-        html <- tryCatch(
-          HTML(markdown::markdownToHTML(text = msg$content, fragment.only = TRUE)),
-          error = function(e) HTML(htmltools::htmlEscape(msg$content))
-        )
-        div(class = paste("chat-bubble", bubble_class), html)
-      })
+        html <- commonmark::markdown_html(msg$content)
+        div(class = paste("chat-bubble", bubble_class), shiny::HTML(html))
+      }))
     })
     
     observeEvent(input$send_message, {
