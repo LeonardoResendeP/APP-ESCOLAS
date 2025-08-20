@@ -1,3 +1,4 @@
+﻿# artifacts e dados locais
 # Ignorar arquivos de dados grandes
 data/
 data\
@@ -8,3 +9,20 @@ C:\Users\Pichau\OneDrive - EBAE - Empresa Brasileira de Avaliações Educacionai
 .Rhistory
 .RData
 .Ruserdata
+outputs/
+report/*.pdf
+config/database.sqlite
+data/escolas/*.rds
+data/
+# arquivos gerados
+*.html
+*.gpkg
+*.csv
+*.png
+*.pdf
+*.html
+reports/
+reports\
+outputs\
+outputs/
+.Renviron
