@@ -502,7 +502,29 @@ mod_escola_server <- function(id, user, codinep) {
           shiny::validate(shiny::need(!is.null(dados), "Dados não carregados."))
           build_onepager(dados, out_pdf = file)
         }, error = function(e) {
-          showNotification(paste("Erro ao gerar relatório:", conditionMessage(e)), type = "error", duration = 8)
+          if (is.null(dados)) {
+            showNotification("Erro: Dados da escola não foram carregados. Por favor, tente novamente após selecionar uma escola válida.", type = "error", duration = 8)
+            stop("Dados não carregados.")
+          }
+          tryCatch({
+            build_onepager(dados, out_pdf = file)
+            if (!file.exists(file)) {
+              showNotification("Erro: O arquivo PDF não foi criado. Verifique se há permissões de escrita na pasta de destino.", type = "error", duration = 8)
+              stop("Falha ao criar o arquivo PDF.")
+            }
+          }, error = function(e_inner) {
+            showNotification(
+              paste("Erro ao gerar o relatório PDF. Detalhes:", conditionMessage(e_inner)),
+              type = "error", duration = 8
+            )
+            stop(e_inner)
+          })
+        }, error = function(e) {
+          # Mensagem genérica para outros erros não capturados acima
+          showNotification(
+            paste("Erro inesperado ao gerar relatório:", conditionMessage(e)),
+            type = "error", duration = 8
+          )
           stop(e)
         })
       }
