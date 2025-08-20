@@ -1,31 +1,46 @@
-﻿# R / IDE
+# ----------------------------
+# R / RStudio
+# ----------------------------
 .Rproj.user/
 .Rhistory
 .RData
 .Ruserdata
-.RDataTmp*
 
-# Credenciais / configs locais
+# ----------------------------
+# Credenciais / ambiente
+# ----------------------------
 .Renviron
+
+# ----------------------------
+# renv (mantém lock e activate)
+# ----------------------------
+renv/library/
+renv/staging/
+
+# ----------------------------
+# Artefatos locais do app
+# ----------------------------
 config/database.sqlite
 
-# Dados locais (não versionar)
+# ----------------------------
+# Dados grandes e locais
+# ----------------------------
 data/
 
-# Artefatos gerados
+# ----------------------------
+# Saídas geradas
+# ----------------------------
 outputs/
-# PDFs e HTMLs gerados do relatório
+
+# Relatórios gerados (mantém assets do report)
 report/*.pdf
-report/onepager_*.html
-# mapas/relatórios html soltos na raiz (ex.: coverage_map_executivo_*.html)
-/*.html
+report/*.html
 
-# Manter arquivos de marca/temas no repo
-!report/logo_rabbit.png
-!report/qr_demo.png
-!report/relatorio.css
-!report/relatorio_escola.Rmd
-
-# Arquivos pesados comuns (apenas se gerados; preferir ficar em outputs/)
-*.csv
-*.gpkg
+# ----------------------------
+# Lixo de SO / temporários
+# ----------------------------
+.DS_Store
+Thumbs.db
+desktop.ini
+*.log
+*.tmp
