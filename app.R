@@ -1,6 +1,11 @@
 library(shiny)
 library(tidyverse)
 library(bslib) # Carrega a biblioteca de temas
+# --- Variáveis de ambiente ---
+if (file.exists(".Renviron")) readRenviron(".Renviron")
+if (!nzchar(Sys.getenv("OPENAI_API_KEY"))) {
+  stop("OPENAI_API_KEY não está definida. Verifique o seu .Renviron.")
+}
 
 # Carrega o novo utilitário de banco de dados
 source("utils/db_utils.R")
