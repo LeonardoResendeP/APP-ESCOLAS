@@ -1,55 +1,70 @@
 # utils/openai_utils.R
-
 library(httr)
 library(jsonlite)
 
-# Esta função encapsula a lógica para enviar um prompt e receber uma resposta.
-get_openai_analysis <- function(prompt_text, api_key = Sys.getenv("OPENAI_API_KEY")) {
-  
-  # Verifica se a chave de API foi configurada
-  if (api_key == "") {
+.rtrim_slash <- function(x) sub("/+$", "", x)
+
+get_openai_analysis <- function(
+    prompt_text,
+    api_key      = Sys.getenv("OPENAI_API_KEY"),
+    model        = Sys.getenv("OPENAI_MODEL", unset = "gpt-4o"),
+    base_url     = Sys.getenv("OPENAI_BASE",  unset = "https://api.openai.com"),
+    project_id   = Sys.getenv("OPENAI_PROJECT", unset = ""),
+    organization = Sys.getenv("OPENAI_ORG",     unset = "")
+) {
+  api_key <- trimws(api_key)
+  if (!nzchar(api_key)) {
     stop("Chave de API da OpenAI não encontrada. Configure a variável de ambiente OPENAI_API_KEY.")
   }
   
-  cat("🤖 Enviando prompt para a OpenAI...\n")
+  url <- paste0(.rtrim_slash(base_url), "/v1/chat/completions")
   
-  # Corpo da requisição em formato JSON
+  # Cabeçalhos
+  headers <- add_headers(
+    Authorization = paste("Bearer", api_key),
+    `Content-Type` = "application/json"
+  )
+  if (nzchar(project_id))     headers <- c(headers, add_headers(`OpenAI-Project` = project_id))
+  if (nzchar(organization))   headers <- c(headers, add_headers(`OpenAI-Organization` = organization))
+  
   body <- list(
-    model = "gpt-3.5-turbo", # Modelo mais rápido e econômico
+    model = model,  # gpt-4o é suportado no Chat Completions
     messages = list(
       list(
-        role = "system",
-        # <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<< INÍCIO DA CORREÇÃO <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+        role    = "system",
         content = "Você é um assistente especializado em análise de dados educacionais. Sua função é ajudar diretores de escolas a entenderem seus dados. Responda de forma clara e objetiva. Baseie-se exclusivamente nos dados fornecidos. O contexto inclui dados detalhados para a escola principal e para cada um de seus concorrentes. Quando solicitado a detalhar ou comparar, use os dados individuais de cada escola. Não mencione o formato dos dados (como JSON). Se a informação não estiver disponível, informe que não possui os dados para essa análise."
-        # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> FIM DA CORREÇÃO >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
       ),
-      list(
-        role = "user",
-        content = prompt_text
-      )
+      list(role = "user", content = prompt_text)
     ),
-    temperature = 0.3, # Respostas mais diretas e factuais
-    max_tokens = 1000   # Limita o tamanho da resposta
+    temperature = 0.3,
+    max_tokens  = 1000
   )
   
-  # Realiza a chamada POST para a API
-  response <- POST(
-    url = "https://api.openai.com/v1/chat/completions",
-    add_headers(Authorization = paste("Bearer", api_key)),
-    content_type_json(),
+  resp <- httr::RETRY(
+    "POST", url, headers,
+    body = jsonlite::toJSON(body, auto_unbox = TRUE),
     encode = "json",
-    body = body
+    times = 2, terminate_on = c(400, 401, 403, 404, 422), pause_base = 1
   )
   
-  # Verifica se a requisição foi bem-sucedida
-  if (status_code(response) == 200) {
-    cat("✅ Resposta recebida com sucesso!\n")
-    # Extrai o conteúdo da resposta
-    content <- content(response, "parsed")
-    return(content$choices[[1]]$message$content)
-  } else {
-    # Mostra uma mensagem de erro detalhada
-    error_details <- content(response, "text", encoding = "UTF-8")
-    stop("Falha na chamada da API: ", status_code(response), "\nDetalhes: ", error_details)
+  sc <- status_code(resp)
+  if (sc >= 300) {
+    raw <- content(resp, "text", encoding = "UTF-8")
+    stop(sprintf("Falha na chamada da API (%s): %s", sc, raw))
   }
+  
+  payload <- content(resp, "parsed", type = "application/json")
+  if (is.null(payload$choices) || length(payload$choices) == 0) {
+    stop("Resposta da API sem 'choices'.")
+  }
+  payload$choices[[1]]$message$content
+}
+
+# (Opcional) health check para usar no console
+openai_health_check <- function() {
+  base_url <- Sys.getenv("OPENAI_BASE",  unset = "https://api.openai.com")
+  key      <- trimws(Sys.getenv("OPENAI_API_KEY"))
+  url      <- paste0(.rtrim_slash(base_url), "/v1/me")
+  resp <- GET(url, add_headers(Authorization = paste("Bearer", key)))
+  list(status = status_code(resp), body = content(resp, "parsed"))
 }
