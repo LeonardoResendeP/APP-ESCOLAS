@@ -1,30 +1,31 @@
-﻿# R / RStudio
-.Rhistory
+﻿# R / IDE
 .Rproj.user/
+.Rhistory
 .RData
 .Ruserdata
+.RDataTmp*
 
-# Dependências do projeto (renv)
-.renv/
-renv/library/
-
-# Segredos locais
+# Credenciais / configs locais
 .Renviron
-
-# Dados locais/grandes (não versionar)
-data/escolas/
-data/*.rds
-
-# Banco local
 config/database.sqlite
 
-# Relatórios gerados (PDFs prontos)
-report/*.pdf
+# Dados locais (não versionar)
+data/
 
-# Saídas geradas
+# Artefatos gerados
 outputs/
+# PDFs e HTMLs gerados do relatório
+report/*.pdf
+report/onepager_*.html
+# mapas/relatórios html soltos na raiz (ex.: coverage_map_executivo_*.html)
+/*.html
 
-# Lixo de SO
-Thumbs.db
-Desktop.ini
-.DS_Store
+# Manter arquivos de marca/temas no repo
+!report/logo_rabbit.png
+!report/qr_demo.png
+!report/relatorio.css
+!report/relatorio_escola.Rmd
+
+# Arquivos pesados comuns (apenas se gerados; preferir ficar em outputs/)
+*.csv
+*.gpkg
