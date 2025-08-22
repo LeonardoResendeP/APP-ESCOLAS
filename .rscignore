@@ -1,0 +1,43 @@
+
+# ===== EXCLUIR DO DEPLOY =====
+data/_no_deploy/**
+data/microdados_enem_2024/**
+data/raw/**
+data/censo_ibge_2022/**
+data/cache_setores/**
+data/**/*.gpkg
+data/**/*.zip
+data/**/*.dbf
+data/**/*.shp
+data/**/*.shx
+data/**/*.qix
+data/**/*.csv
+data/censo.csv
+data/app/setor_2025_ready.rds
+
+# SAÍDAS / ARTEFATOS
+outputs/**
+report/**
+reports/**
+*.pdf
+*.png
+*.html
+
+# renv local (servidor recompila)
+renv/library/**
+
+# TEMP / IDE
+.Rproj.user/**
+.Rhistory
+.RData
+.RDataTmp*
+.DS_Store
+Thumbs.db
+
+# ===== PERMITIR EXCEÇÕES (dados mínimos do app) =====
+!data/processed/escolas_SP_RJ_MG.rds
+!data/escolas/**
+!data/municipios_lookup.rds
+!data/processed/enem_escola_min.rds
+!data/processed/enem_muni_min.rds
+

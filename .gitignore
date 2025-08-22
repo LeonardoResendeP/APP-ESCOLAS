@@ -43,4 +43,10 @@ report/*.html
 Thumbs.db
 desktop.ini
 *.log
-*.tmp
+*.tmpdata/_no_deploy/
+data/microdados_enem_2024/
+data/raw/
+data/censo_ibge_2022/
+data/cache_setores/
+report/
+reports/

@@ -490,39 +490,36 @@ mod_escola_server <- function(id, user, codinep) {
         DT::datatable(options = list(dom = 't'), rownames = FALSE)
     })
     # ---- Download do One-Pager ----
+    # modules/mod_escola.R — trecho do server com downloadHandler
+    
+    # Utilitário para garantir que o builder esteja carregado
+    load_onepager_builder <- function() {
+      src <- here::here("utils", "onepager_build.R")
+      if (!file.exists(src)) stop("Arquivo utils/onepager_build.R não encontrado.")
+      source(src, local = TRUE) # expõe build_onepager() no ambiente atual
+      if (!exists("build_onepager")) stop("Função build_onepager() não disponível após source().")
+    }
+    
     output$dl_onepager <- downloadHandler(
       filename = function() {
-        dados <- dados_escola_reativo()
-        paste0("Relatorio_", dados$id_escola, "_", format(Sys.Date(), "%Y-%m-%d"), ".pdf")
+        d <- dados_escola_reativo()
+        paste0("Relatorio_", d$id_escola, "_", format(Sys.Date(), "%Y-%m-%d"), ".pdf")
       },
       content = function(file) {
+        # captura dados
+        d <- dados_escola_reativo()
+        shiny::validate(shiny::need(!is.null(d), "Dados não carregados."))
+        
+        # carrega o builder
+        load_onepager_builder()
+        
+        # gera PDF diretamente no 'file' fornecido pelo Shiny
         tryCatch({
-          source("utils/onepager_build.R")
-          dados <- dados_escola_reativo()
-          shiny::validate(shiny::need(!is.null(dados), "Dados não carregados."))
-          build_onepager(dados, out_pdf = file)
+          build_onepager(dados = d, out_pdf = file)
+          if (!file.exists(file)) stop("Falha ao criar o PDF.")
         }, error = function(e) {
-          if (is.null(dados)) {
-            showNotification("Erro: Dados da escola não foram carregados. Por favor, tente novamente após selecionar uma escola válida.", type = "error", duration = 8)
-            stop("Dados não carregados.")
-          }
-          tryCatch({
-            build_onepager(dados, out_pdf = file)
-            if (!file.exists(file)) {
-              showNotification("Erro: O arquivo PDF não foi criado. Verifique se há permissões de escrita na pasta de destino.", type = "error", duration = 8)
-              stop("Falha ao criar o arquivo PDF.")
-            }
-          }, error = function(e_inner) {
-            showNotification(
-              paste("Erro ao gerar o relatório PDF. Detalhes:", conditionMessage(e_inner)),
-              type = "error", duration = 8
-            )
-            stop(e_inner)
-          })
-        }, error = function(e) {
-          # Mensagem genérica para outros erros não capturados acima
           showNotification(
-            paste("Erro inesperado ao gerar relatório:", conditionMessage(e)),
+            paste("Erro ao gerar o relatório PDF:", conditionMessage(e)),
             type = "error", duration = 8
           )
           stop(e)

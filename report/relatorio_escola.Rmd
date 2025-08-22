@@ -1,5 +1,5 @@
 ---
-title: "Relatório Executivo — Rabbit"
+title: ""
 lang: pt-BR
 output:
   html_document:
@@ -8,187 +8,298 @@ output:
 params:
   meta:
     value:
+        
       nome_escola: "N/D"
       municipio: "N/D"
       data_ref: !r format(Sys.Date(), "%d/%m/%Y")
-      logo_path: ""            # (abs) opcional
-      qr_path: ""              # (abs) opcional
-      concorrentes_line: ""    # string já formatada (todos)
+      logo_explora_uri: ""
+      logo_pe_uri: ""
+      logo_rabbit_uri: ""
+      concorrentes_line: ""
+      col_prim: "#147AD6"
+      col_texto: "#111827"
+      col_linha: "#E5E7EB"
   kpis:
     value:
       matriculas_var_total: "—"
       enem_media: "—"
-      enem_delta_conc: ""      # string vazia quando sem dado
+      enem_delta_conc: ""
   tabelas:
     value:
       matriculas: !r data.frame()
       enem_areas: !r data.frame()
-  figuras:
+  analise:
     value:
-      grafico_path: ""         # (abs)
+      texto: "—"
+  figuras:
+    value: {}
 ---
 
-```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo=FALSE, warning=FALSE, message=FALSE)
-library(knitr)
-library(kableExtra)
-
-fmt_int  <- function(x) ifelse(is.na(x), "—", formatC(as.integer(x), format="d", big.mark=".", decimal.mark=","))
-fmt_num1 <- function(x) ifelse(is.na(x), "—", format(round(as.numeric(x),1), nsmall=1, decimal.mark=","))
-nzchr <- function(x) !is.null(x) && length(x)==1 && !is.na(x) && isTRUE(nzchar(x))
-```
-
-<style>
+```{r css_block, echo=FALSE, results='asis'}
+css <- "
 @page { size: A4; margin: 10mm; }
 * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-body { font-family: -apple-system, Segoe UI, Roboto, Arial, sans-serif; color: #1f2937; font-size: 11.5px; }
-h1, h2, h3 { color: #1f2937; margin: 6px 0 4px; }
+
+/* ocupar largura total (evita 'comprimido à esquerda') */
+.main-container { max-width: 100% !important; padding-left: 0; padding-right: 0; }
+
+body { font-family: -apple-system, Segoe UI, Roboto, Arial, sans-serif; color: #111827; font-size: 11.5px; }
+h1 { margin: 0 0 2px 0; color: #111827; }
+h3 { margin: 6px 0 4px; color: #111827; }
 small { color: #6b7280; }
-hr { border: 0; border-top: 2px solid #6A4CFF; margin: 6px 0 6px; }
+hr { border: 0; border-top: 2px solid #147AD6; margin: 6px 0 6px; }
 
-table { width: 100%; border-collapse: collapse; margin: 2px 0 6px; }
-th, td { border-bottom: 1px solid #e5e7eb; padding: 3px 6px; }
-th { text-transform: uppercase; font-size: 9.5px; color: #6b7280; text-align: left; }
-
-/* >>> NOVO: tabelas compactas com colgroup e números tabulares */
-table.compact { width:100%; border-collapse:collapse; table-layout: fixed; }
-table.compact th.n, table.compact td.n {
-  text-align: right;
-  white-space: nowrap;
-  /* forçar dígitos com largura fixa */
-  font-variant-numeric: tabular-nums;
-  font-feature-settings: "tnum" 1, "lnum" 1;
-  font-family: Segoe UI, Roboto, Arial, sans-serif;
+/* header em duas colunas */
+.header {
+  display: grid;
+  grid-template-columns: 1fr 140px;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 6px;
 }
-/* larguras fixas p/ tabela de matrículas (1 + 5 colunas) */
-table.compact col.seg { width: 32%; }
-table.compact col.c1, table.compact col.c2, table.compact col.c3, table.compact col.c4, table.compact col.c5 { width: 13.6%; }
+.logo-explora { max-width: 120px; height: auto; display: block; margin-left: auto; }
+.sub { color: #4b5563; }
 
-/* larguras fixas p/ tabela ENEM por área (1 + 3 colunas) */
-table.compact col.area { width: 30%; }
-table.compact col.m1, table.compact col.m2, table.compact col.m3 { width: 23.333%; }
-
-img { display: block; }
-section, h2, h3, table, p { page-break-inside: avoid; }
-.kpi { display:inline-block; width: 49%; border:1px solid #e5e7eb; border-radius:10px; padding:8px; margin:2px 0; vertical-align:top; }
+/* cartões KPI */
+.kpi-wrap { display:flex; gap:8px; }
+.kpi { flex:1 1 0; border:1px solid #E5E7EB; border-radius:10px; padding:8px; }
 .kpi .title { font-size:10px; color:#6b7280; text-transform:uppercase; letter-spacing:.04em; }
-.kpi .value { font-size:18px; font-weight:800; }
+.kpi .value { font-size:18px; font-weight:800; color:#111827; }
 .kpi .delta { font-size:11px; color:#6b7280; }
-.footer-note { display:flex; justify-content:space-between; align-items:flex-end; margin-top:6px; }
-.footer-note .right { text-align:right; }
-.cta { margin-top: 4px; font-weight:600; word-break: keep-all; white-space: normal; }
-</style>
 
+/* box da análise por IA */
+.card.ai p { margin: 4px 0; line-height: 1.28; }
+.card.ai ul { margin: 4px 0 0 16px; padding: 0; }
+.card.ai li { margin: 0 0 2px 0; }
 
-## Rabbit • Relatório Executivo (1 página)
-
-**Escola:** `r params$meta$nome_escola`    **Município:** `r params$meta$municipio`    **Data:** `r params$meta$data_ref`
-
-```{r logo, fig.align='right', out.width='85px'}
-path <- params$meta$logo_path
-if (!is.null(path) && length(path)==1 && !is.na(path) && nzchar(path) && file.exists(path)) {
-  knitr::include_graphics(path)
+/* rodapé com parceiros em cinza */
+.footer {
+  display:flex; justify-content:space-between; align-items:flex-end; margin-top:6px;
+  border-top: 1px solid #E5E7EB; padding-top:6px;
 }
+.partner { height: 16px; filter: grayscale(100%); opacity:.9; margin-left:8px; }
+"
+knitr::asis_output(paste0("<style>\n", css, "\n</style>"))
 ```
 
-**Concorrentes:** `r if (nzchr(params$meta$concorrentes_line)) params$meta$concorrentes_line else "—"`
+```{r setup, include=FALSE, results='asis'}
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE)
+suppressPackageStartupMessages({
+  library(knitr)
+  library(kableExtra)
+  library(dplyr)
+  library(htmltools)
+})
 
----
+fmt_int  <- function(x) ifelse(is.na(x), "—", formatC(as.integer(x), format = "d", big.mark = ".", decimal.mark = ","))
+fmt_num1 <- function(x) ifelse(is.na(x), "—", format(round(as.numeric(x), 1), nsmall = 1, decimal.mark = ","))
+
+# helper p/ imagens data URI
+make_img <- function(uri, class = "") {
+  if (is.null(uri) || !nzchar(uri)) return("")
+  sprintf('<img src="%s" class="%s" alt="logo"/>', uri, class)
+}
+
+# prepara HTML dos logos (chega pronto do builder)
+logo_html      <- make_img(params$meta$logo_explora_uri, "logo-explora")
+partner_pe     <- make_img(params$meta$logo_pe_uri, "partner")
+partner_rabbit <- make_img(params$meta$logo_rabbit_uri, "partner")
+
+# linha de concorrentes
+conc_line <- if (!is.null(params$meta$concorrentes_line) && nzchar(params$meta$concorrentes_line)) {
+  paste0("Concorrentes: ", params$meta$concorrentes_line)
+} else {
+  "Concorrentes: —"
+}
+
+# tokens de cor
+COL_PRIM <- params$meta$col_prim
+COL_TEXT <- params$meta$col_texto
+COL_LINE <- params$meta$col_linha
+
+```
+
+```{r header_block, echo=FALSE}
+library(htmltools)
+
+# Função auxiliar para valores nulos
+`%||%` <- function(a,b) if (!is.null(a) && nzchar(a)) a else b
+
+# Prepara a linha de concorrentes
+conc_line <- if (!is.null(params$meta$concorrentes_line) && nzchar(params$meta$concorrentes_line)) {
+  paste0("Concorrentes: ", params$meta$concorrentes_line)
+} else {
+  "Concorrentes: —"
+}
+
+# Prepara a tag do logo
+logo_tag <- {
+  uri <- gsub("\\s+", "", params$meta$logo_explora_uri %||% "")
+  if (nzchar(uri)) {
+    tags$img(src = uri, class = "logo-explora", alt = "Explora")
+  } else {
+    ""
+  }
+}
+
+# Constrói o HTML usando funções do htmltools
+header_div <- div(class = "header",
+  div(class = "h-left",
+    h1("Relatório Executivo ",
+      tags$small(style = paste0("color:", params$meta$col_prim %||% "#147AD6"), "• Explora")
+    ),
+    div(class = "sub",
+      tags$strong("Escola:"), (params$meta$nome_escola %||% "—"), HTML("&nbsp;•&nbsp;"),
+      tags$strong("Município:"), (params$meta$municipio %||% "—"), HTML("&nbsp;•&nbsp;"),
+      tags$strong("Data:"), (params$meta$data_ref %||% "—")
+    ),
+    div(class = "concorrentes", style = "margin-top:4px;",
+      tags$strong(conc_line)
+    )
+  ),
+  div(class = "h-right", logo_tag)
+)
+
+# Apenas "chame" os objetos no final para renderizá-los
+header_div
+tags$hr()
+```
 
 ### Indicadores-chave
-<div class="kpi">
-  <div class="title">Matrículas 23→24 (var%)</div>
-  <div class="value">`r params$kpis$matriculas_var_total`</div>
-  <div class="delta"><small>Base: Infantil + Fundamental + Médio</small></div>
-</div>
-<div class="kpi">
-  <div class="title">ENEM (média geral)</div>
-  <div class="value">`r params$kpis$enem_media`</div>
-  <div class="delta">`r if (nzchr(params$kpis$enem_delta_conc)) paste0("<small>| Δ vs conc.: ", params$kpis$enem_delta_conc,"</small>") else ""`</div>
-</div>
+
+```{r kpis, echo=FALSE}
+# Carrega a biblioteca se ainda não o fez
+library(htmltools)
+
+# Operador para lidar com valores nulos (opcional, mas bom)
+`%||%` <- function(a, b) if (!is.null(a)) a else b
+
+# Cria os elementos HTML usando funções do R
+kpi_div <- div(class = "kpi-wrap",
+  div(class = "kpi",
+    div(class = "title", "Matrículas 23→24 (var%%)"),
+    div(class = "value", params$kpis$matriculas_var_total %||% "—"),
+    div(class = "delta", tags$small("Base: Infantil + Fundamental + Médio"))
+  ),
+  div(class = "kpi",
+    div(class = "title", "ENEM (média geral)"),
+    div(class = "value", params$kpis$enem_media %||% "—"),
+    div(class = "delta",
+      if (!is.null(params$kpis$enem_delta_conc) && nzchar(params$kpis$enem_delta_conc)) {
+        tags$small(sprintf("Δ vs conc.: %s", params$kpis$enem_delta_conc))
+      } else {
+        ""
+      }
+    )
+  )
+)
+
+# Apenas chame o objeto no final do chunk. O knitr o renderizará automaticamente.
+kpi_div
+```
 
 ### Matrículas por segmento (23→24)
-```{r mat_segmento, results='asis'}
+
+```{r}
 df <- params$tabelas$matriculas
-if (is.data.frame(df) && nrow(df)>0) {
-  df$`2023` <- fmt_int(df$`2023`); df$`2024` <- fmt_int(df$`2024`)
+if (is.data.frame(df) && nrow(df) > 0) {
+  # garante nomes
   colnames(df) <- c("Segmento","2023","2024","Var% Esc.","Var% Conc.","Var% Mun.")
-  html <- '<table class="compact">
-  <colgroup><col class="seg"/><col class="c1"/><col class="c2"/><col class="c3"/><col class="c4"/><col class="c5"/></colgroup>
-  <thead><tr>
-    <th>Segmento</th><th class="n">2023</th><th class="n">2024</th>
-    <th class="n">Var% Esc.</th><th class="n">Var% Conc.</th><th class="n">Var% Mun.</th>
-  </tr></thead><tbody>'
-  for (i in seq_len(nrow(df))) {
-    html <- paste0(html, "<tr>",
-      "<td>", df$Segmento[i], "</td>",
-      "<td class='n'>", df$`2023`[i], "</td>",
-      "<td class='n'>", df$`2024`[i], "</td>",
-      "<td class='n'>", df$`Var% Esc.`[i], "</td>",
-      "<td class='n'>", df$`Var% Conc.`[i], "</td>",
-      "<td class='n'>", df$`Var% Mun.`[i], "</td>",
-    "</tr>")
-  }
-  html <- paste0(html, "</tbody></table>")
-  cat(html)
+  df$`2023` <- fmt_int(df$`2023`); df$`2024` <- fmt_int(df$`2024`)
+  
+  df |>
+    kableExtra::kbl(align = c("l","r","r","r","r","r"), escape = TRUE) |>
+    kableExtra::kable_classic(full_width = TRUE, html_font = "Segoe UI") |>
+    kableExtra::kable_styling(bootstrap_options = c("condensed"), full_width = TRUE) |>
+    kableExtra::row_spec(0, extra_css = sprintf("background:#F7FAFF;color:%s;", COL_TEXT)) |>
+    kableExtra::add_header_above(c(" " = 1, "Valores" = 2, "Variações (%%)" = 3))
 } else {
   cat("*Sem dados de matrículas por segmento.*")
 }
-```
 
-### ENEM — comparativo geral
-```{r grafico, fig.align='center', out.width='100%'}
-gpath <- params$figuras$grafico_path
-if (!is.null(gpath) && length(gpath)==1 && !is.na(gpath) && nzchar(gpath) && file.exists(gpath)) {
-  knitr::include_graphics(gpath)
-} else {
-  cat("*Sem gráfico disponível.*")
-}
 ```
 
 ### ENEM por área (média)
-```{r enem_area_tab, results='asis'}
+
+```{r enem_por_area, echo=FALSE, results='asis'}
 ea <- params$tabelas$enem_areas
-if (is.data.frame(ea) && nrow(ea)>0) {
-  ord <- c("Linguagens e Códigos","Matemática","Ciências Humanas","Ciências da Natureza","Redação")
+
+if (is.data.frame(ea) && nrow(ea) > 0) {
+  # ordem canônica de exibição
+  ordem <- c("Linguagens e Códigos","Matemática","Ciências Humanas","Ciências da Natureza","Redação")
   if ("Área" %in% names(ea)) {
-    ea$Área <- factor(ea$Área, levels = ord); ea <- ea[order(ea$Área), , drop=FALSE]; ea$Área <- as.character(ea$Área)
+    ea$Área <- factor(ea$Área, levels = ordem)
+    ea <- ea[order(ea$Área), , drop = FALSE]
+    ea$Área <- as.character(ea$Área)
   }
-  for (cc in setdiff(colnames(ea), "Área")) ea[[cc]] <- fmt_num1(ea[[cc]])
-  colnames(ea) <- c("Área","Sua Escola","Média Concorrentes","Média Municipal")
-  html <- '<table class="compact">
-  <colgroup><col class="area"/><col class="m1"/><col class="m2"/><col class="m3"/></colgroup>
-  <thead><tr>
-    <th>Área</th><th class="n">Sua Escola</th><th class="n">Média Concorrentes</th><th class="n">Média Municipal</th>
-  </tr></thead><tbody>'
-  for (i in seq_len(nrow(ea))) {
-    html <- paste0(html, "<tr>",
-      "<td>", ea$`Área`[i], "</td>",
-      "<td class='n'>", ea$`Sua Escola`[i], "</td>",
-      "<td class='n'>", ea$`Média Concorrentes`[i], "</td>",
-      "<td class='n'>", ea$`Média Municipal`[i], "</td>",
-    "</tr>")
+
+  # Garante as 3 colunas esperadas; se alguma faltar, cria vazia
+  faltantes <- setdiff(c("Sua Escola","Média Concorrentes","Média Municipal"), names(ea))
+  for (m in faltantes) ea[[m]] <- NA_real_
+
+  # Formatação numérica (1 casa, vírgula como separador decimal)
+  for (cc in c("Sua Escola","Média Concorrentes","Média Municipal")) {
+    ea[[cc]] <- fmt_num1(ea[[cc]])
   }
-  html <- paste0(html, "</tbody></table>")
-  cat(html)
+
+  # Render com kableExtra
+  ea |>
+    kableExtra::kbl(
+      align = c("l","r","r","r"),
+      col.names = c("Área","Sua Escola","Média Concorrentes","Média Municipal"),
+      escape = TRUE
+    ) |>
+    kableExtra::kable_classic(full_width = TRUE, html_font = "Segoe UI") |>
+    kableExtra::kable_styling(bootstrap_options = c("condensed"), full_width = TRUE) |>
+    kableExtra::row_spec(0, extra_css = "background:#F7FAFF;")
 } else {
-  cat("*Sem dados por área.*")
+  cat("*Sem dados do ENEM por área.*")
 }
 ```
 
----
+### Análise executiva
 
-<div class="footer-note">
-  <div class="cta">
-    Aponte a câmera para o QR e veja análises atualizadas todo mês no app Rabbit.
-  </div>
-  <div class="right">
-```{r qr, fig.align='right', out.width='70px'}
-qpath <- params$meta$qr_path
-if (!is.null(qpath) && length(qpath)==1 && !is.na(qpath) && nzchar(qpath) && file.exists(qpath)) {
-  knitr::include_graphics(qpath)
+```{r analise_exec, echo=FALSE, results='asis'}
+library(htmltools)
+
+`%||%` <- function(a, b) if (!is.null(a)) a else b
+
+# Remove cercas de código Markdown, ex.: ```html ... ```
+strip_md_fences <- function(s) {
+  s <- sub("^\\s*```[a-zA-Z]*\\s*\\n?", "", s)  # tira início ``` ou ```html
+  s <- sub("\\n?\\s*```\\s*$", "", s)           # tira final ```
+  s
+}
+
+txt <- params$analise$texto %||% ""
+
+if (nzchar(txt)) {
+  txt <- strip_md_fences(txt)
+
+  # Se NÃO houver tags HTML conhecidas, converte \n -> <br/> (texto puro).
+  # Se já vier com <p>, <ul>, <li>... mantém como está.
+  if (!grepl("<(p|ul|ol|li|br|strong|em)\\b", txt, ignore.case = TRUE)) {
+    txt <- gsub("\n", "<br/>", txt, fixed = TRUE)
+  }
+
+  div(class = "card ai", HTML(txt))
+} else {
+  tags$em("Sem análise gerada.")
 }
 ```
-    <small>Dados: Censo Escolar 2023–2024 • ENEM 2024 • Concorrentes = selecionados</small>
-  </div>
-</div>
+
+```{r footer_open, echo=FALSE, results='asis'}
+knitr::asis_output('<div class="footer"><div class="left"><small>Dados: Censo Escolar 2023–2024 • ENEM 2024 • Concorrentes = selecionados</small></div><div class="right" style="display:flex;align-items:center;">')
+```
+
+```{r}
+partner_html <- paste0(
+  if (!is.null(params$meta$logo_pe_uri)     && nzchar(params$meta$logo_pe_uri))     sprintf('<img class="partner" src="%s" alt="Primeira Escolha"/>', params$meta$logo_pe_uri) else "",
+  if (!is.null(params$meta$logo_rabbit_uri) && nzchar(params$meta$logo_rabbit_uri)) sprintf('<img class="partner" src="%s" alt="Rabbit"/>',            params$meta$logo_rabbit_uri) else ""
+)
+knitr::asis_output(partner_html)
+```
+
+```{rfooter_close, echo=FALSE, results='asis'}
+knitr::asis_output('</div></div>')
+```

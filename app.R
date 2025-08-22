@@ -9,6 +9,7 @@ if (!nzchar(Sys.getenv("OPENAI_API_KEY"))) {
 
 # Carrega o novo utilitário de banco de dados
 source("utils/db_utils.R")
+source("utils/onepager_build.R")
 
 # Carrega os módulos da aplicação
 source("modules/mod_auth.R")
