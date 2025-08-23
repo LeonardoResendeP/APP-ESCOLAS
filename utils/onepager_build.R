@@ -200,22 +200,16 @@ build_prompt_rich <- function(F) {
   
   paste0(
     "Você é consultor educacional escrevendo para direção escolar (PT-BR, tom executivo).
-Entregue um texto de 160–230 palavras, claro e acionável. NÃO invente números.
+Entregue um texto de 100–150 palavras, claro e acionável. NÃO invente números.
 Estrutura obrigatória (HTML simples):
 <p><strong>Síntese:</strong> ...</p>
 <p><strong>Sinais do período:</strong></p>
 <ul><li>...</li><li>...</li><li>...</li></ul>
-<p><strong>Riscos & Oportunidades:</strong></p>
-<ul><li>...</li><li>...</li></ul>
-<p><strong>Plano 30–60 dias:</strong></p>
-<ul><li>...</li><li>...</li><li>...</li></ul>
-<p><small><em>KPIs a monitorar:</em> ...</small></p>
-
 Guidelines:
 - NÃO use blocos de código Markdown (```). Responda apenas com HTML simples.
 - Use dados abaixo; quando faltar, descreva qualitativamente (use “—”).
 - Cite segmentos/áreas de forma específica (ex.: “Médio recuou”, “Matemática acima do mercado”).
-- Recomendações devem ser práticas (captação, retenção, comunicação, reforço acadêmico, parcerias etc.).
+- Recomendações devem atrair o usuario acessar o app através do qr code, intigando desejo por analises mais detalhadas, mencione que todos os meses terão analises novas.
 
 DADOS (não repita em lista bruta; use para embasar a análise):
 - Escola/Município: ", F$escola, " — ", F$municipio, "
@@ -341,6 +335,11 @@ find_logo_uri <- function(basenames, dir = here::here("report","assets")) {
   ""
 }
 
+
+
+
+
+
 # ----------------- BUILDER (com filtro de params) -----------------
 build_onepager <- function(dados, out_pdf) {
   stopifnot(is.list(dados), length(out_pdf) == 1)
@@ -352,7 +351,7 @@ build_onepager <- function(dados, out_pdf) {
   logo_explora_uri <- find_logo_uri(c("logo_explora","explora_logo","explora"))
   logo_pe_uri      <- find_logo_uri(c("logo_primeira_escolha","logo_pe","primeira_escolha"))
   logo_rabbit_uri  <- find_logo_uri(c("logo_rabbit","rabbit_logo","rabbit"))
-  
+  qr_uri  <- find_logo_uri(c("qr_demo","qr_code","qr"))
   # Paleta
   COL_PRIM  <- "#147AD6"  # azul Explora
   COL_TEXTO <- "#111827"  # grafite
@@ -375,6 +374,7 @@ build_onepager <- function(dados, out_pdf) {
       logo_explora_uri  = logo_explora_uri,
       logo_pe_uri       = logo_pe_uri,
       logo_rabbit_uri   = logo_rabbit_uri,
+      qr_uri = qr_uri,
       concorrentes_line = conc_line,
       col_prim  = COL_PRIM,
       col_texto = COL_TEXTO,
@@ -431,7 +431,7 @@ build_onepager <- function(dados, out_pdf) {
         marginLeft  = 0.39, marginRight  = 0.39,
         printBackground = TRUE,
         preferCSSPageSize = TRUE,
-        scale = 0.88
+        scale = 0.78
       )
       raw_pdf <- jsonlite::base64_dec(pdf$data)
       con <- file(out_pdf, "wb"); writeBin(raw_pdf, con); close(con)

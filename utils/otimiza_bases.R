@@ -1125,12 +1125,25 @@ cat(sprintf("  report(s)/     : %.2f (idem)\n", size_gb(c("report","reports"))))
 
     # --- adicionar esses dados leves esperados pelo app ---
     extra_data <- c(
-      "data/escolas_geo_com_empty_flag.rds"
+      "report/assets/logo_explora.png",
+      "report/assets/logo_primeira_escolha.png",
+      "report/assets/logo_rabbit.jpg"
     )
     whitelist <- unique(c(whitelist, extra_data))
     whitelist <- whitelist[file.exists(whitelist)]
     
-        
+    install.packages("here")   # instala localmente
+    renv::snapshot(prompt = FALSE)  # grava no renv.lock
+    renv::status()    
+    
+    
+    assets <- dir_ls("report/assets", recurse = FALSE, type = "file",
+                     glob = "*.png|*.jpg|*.jpeg", fail = FALSE)
+    
+    whitelist <- unique(c(whitelist, assets))
+    whitelist <- whitelist[file.exists(whitelist)]
+    message("Arquivos no deploy: ", length(whitelist), " | ~",
+            round(sum(file_info(whitelist)$size, na.rm = TRUE)/1024^2, 1), " MB")
     # 9) deploy (ajuste o appName/account se quiser)
     options(rsconnect.max.bundle.size = 10 * 1024^3)  # só por garantia
     rsconnect::deployApp(
@@ -1141,4 +1154,9 @@ cat(sprintf("  report(s)/     : %.2f (idem)\n", size_gb(c("report","reports"))))
       server   = "shinyapps.io",
       logLevel = "verbose"
     )
+    
+    print(whitelist)
+    
+    renv::install(c("here","htmltools","kableExtra","jsonlite"))
+    renv::snapshot()
     

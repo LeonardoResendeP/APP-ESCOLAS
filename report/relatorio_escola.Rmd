@@ -15,6 +15,7 @@ params:
       logo_explora_uri: ""
       logo_pe_uri: ""
       logo_rabbit_uri: ""
+      qr_uri: ""
       concorrentes_line: ""
       col_prim: "#147AD6"
       col_texto: "#111827"
@@ -78,6 +79,34 @@ hr { border: 0; border-top: 2px solid #147AD6; margin: 6px 0 6px; }
   border-top: 1px solid #E5E7EB; padding-top:6px;
 }
 .partner { height: 16px; filter: grayscale(100%); opacity:.9; margin-left:8px; }
+/**** Concorrentes (cartão) ****/
+.conc-card { 
+  border:1px solid `r COL_LINE`; 
+  border-radius:10px; 
+  padding:8px; 
+  background:#FFFFFF; 
+  margin-top:8px; 
+}
+/**** Concorrentes + QR ****/
+.conc-grid {
+  display: grid;
+  grid-template-columns: 1fr 120px; /* esquerda lista, direita QR */
+  gap: 10px;
+  align-items: start;
+  margin-top: 6px;
+}
+.conc-card .conc-desc { margin-bottom: 4px; }
+.conc-list { margin: 6px 0 0; padding-left: 18px; }
+.conc-list li { margin: 2px 0; }
+.conc-note { color: #6b7280; }
+.qr-box {
+  border: 1px dashed #E5E7EB; /* ou a sua COL_LINE */
+  border-radius: 8px;
+  padding: 6px;
+  text-align: center;
+  background: #FFF;
+}
+.qr-img { width: 100%; height: auto; display: block; }
 "
 knitr::asis_output(paste0("<style>\n", css, "\n</style>"))
 ```
@@ -152,9 +181,6 @@ header_div <- div(class = "header",
       tags$strong("Escola:"), (params$meta$nome_escola %||% "—"), HTML("&nbsp;•&nbsp;"),
       tags$strong("Município:"), (params$meta$municipio %||% "—"), HTML("&nbsp;•&nbsp;"),
       tags$strong("Data:"), (params$meta$data_ref %||% "—")
-    ),
-    div(class = "concorrentes", style = "margin-top:4px;",
-      tags$strong(conc_line)
     )
   ),
   div(class = "h-right", logo_tag)
@@ -196,6 +222,68 @@ kpi_div <- div(class = "kpi-wrap",
 
 # Apenas chame o objeto no final do chunk. O knitr o renderizará automaticamente.
 kpi_div
+```
+
+```{r concorrentes_qr, echo=FALSE}
+library(htmltools)
+
+`%||%` <- function(a,b) if (!is.null(a) && nzchar(a)) a else b
+
+# 1) Lista de concorrentes (pega a string e quebra em itens)
+raw <- params$meta$concorrentes_line %||% ""
+items <- character(0)
+if (nzchar(raw)) {
+  items <- strsplit(raw, ",\\s*")[[1]]
+  items <- items[nzchar(items)]
+  items <- head(items, 5)  # máximo 5
+}
+
+lis_tag <- if (length(items)) {
+  tags$ul(class = "conc-list",
+    lapply(items, function(x) {
+      m <- regexec("^(.*)\\s*\\(([^)]+)\\)\\s*$", x)
+      ma <- regmatches(x, m)[[1]]
+      if (length(ma) == 3) {
+        tags$li(tagList(
+          htmlEscape(ma[2]),
+          tags$small(class="muted", paste0(" (ID ", htmlEscape(ma[3]), ")"))
+        ))
+      } else {
+        tags$li(htmlEscape(x))
+      }
+    })
+  )
+} else {
+  NULL
+}
+
+left_col <- div(class = "conc-card",
+  div(class = "conc-desc",
+      tags$strong("Concorrentes próximos"), tags$br(),
+      tags$small("Estes são os 5 concorrentes mais próximos identificados.")
+  ),
+  if (!is.null(lis_tag)) lis_tag else div(class="conc-note", tags$small("Nenhum concorrente selecionado.")),
+  div(class = "conc-note", style="margin-top:6px;",
+      tags$small("Você pode editar os concorrentes no app.")
+  )
+)
+
+# 2) QR à direita — mesma lógica do header: um <img> com src=data:...
+qr_uri <- gsub("\\s+", "", params$meta$qr_uri %||% "")
+right_col <- if (nzchar(qr_uri)) {
+  div(class = "qr-box",
+      tags$img(src = qr_uri, class = "qr-img", alt = "QR para o app"),
+      tags$small("Aponte a câmera para acessar o app")
+  )
+} else {
+  NULL
+}
+
+# 3) Renderiza o grid (se o QR faltar, fica 1 coluna automaticamente)
+div(class = "conc-grid",
+  left_col,
+  right_col
+)
 ```
 
 ### Matrículas por segmento (23→24)
