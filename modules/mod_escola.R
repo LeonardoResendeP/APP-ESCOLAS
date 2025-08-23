@@ -137,95 +137,259 @@ mod_escola_server <- function(id, user, codinep) {
     
     output$nome_escola_titulo <- renderText({
       dados <- dados_escola_reativo()
-      if (!is.null(dados)) {
-        paste("Painel da Escola:", dados$nome_escola)
-      } else {
-        "Painel da Escola"
-      }
+      nm <- if (!is.null(dados)) (dados$nome_escola %||% "") else ""
+      if (!nzchar(nm)) nm <- "Sua Escola"
+      paste("Painel da Escola:", nm)
     })
+    
     
     concorrentes_disponiveis <- reactive({
-      dados <- dados_escola_reativo()
-      req(dados)
-      
+      dados <- dados_escola_reativo(); req(dados)
       nomes_all <- readRDS("data/escolas_privadas_nomelista.rds")
-      geo_all_df <- readRDS("data/escolas_geo_com_empty_flag.rds") %>% sf::st_drop_geometry()
-      
-      escolas_municipio <- nomes_all %>%
-        filter(nome_municipio == dados$nome_municipio, CO_ENTIDADE != codinep) %>%
-        left_join(geo_all_df, by = c("CO_ENTIDADE" = "code_school")) %>%
-        mutate(
-          final_muni_name = coalesce(name_muni, nome_municipio, "Município Desconhecido"),
-          display_name = paste0(NO_ENTIDADE, " - ", final_muni_name, " (", CO_ENTIDADE, ")")
+      escolas_muni <- nomes_all %>%
+        dplyr::filter(
+          .data[[intersect(c("nome_municipio","NM_MUNICIPIO","municipio"), names(.))[1]]] == dados$nome_municipio,
+          CO_ENTIDADE != codinep
         ) %>%
-        select(CO_ENTIDADE, display_name)
-      
-      return(escolas_municipio)
+        dplyr::mutate(
+          display_name = paste0(NO_ENTIDADE, " - ", dados$nome_municipio, " (", CO_ENTIDADE, ")")
+        ) %>%
+        dplyr::select(CO_ENTIDADE, display_name) %>%
+        dplyr::distinct()
+      escolas_muni
     })
     
+    
+    
     observe({
-      choices_df <- concorrentes_disponiveis()
-      req(nrow(choices_df) > 0)
-      
-      choices_list <- setNames(choices_df$CO_ENTIDADE, choices_df$display_name)
+      df <- concorrentes_disponiveis(); req(nrow(df) > 0)
+      choices <- stats::setNames(df$CO_ENTIDADE, df$display_name)
       
       dados <- dados_escola_reativo()
-      concorrentes_atuais <- dados$lista_concorrentes$id_escola
+      sel <- tryCatch(as.character(dados$lista_concorrentes$id_escola), error = function(e) NULL)
       
-      updateSelectizeInput(session, 
-                           "selecao_concorrentes", 
-                           choices = choices_list,
-                           selected = concorrentes_atuais,
-                           server = TRUE)
+      updateSelectizeInput(session,
+                           "selecao_concorrentes",
+                           choices = choices,
+                           selected = sel,
+                           server = TRUE
+      )
     })
+    
+    
     
     observeEvent(input$btn_atualizar_analise, {
       req(input$selecao_concorrentes)
-      
       showNotification("Atualizando e salvando nova seleção de concorrentes...", type = "message", duration = 5)
       
-      dados_atuais <- dados_escola_reativo()
+      # ---- estado atual + ids
+      dados_atuais <- dados_escola_reativo(); req(dados_atuais)
+      codinep_ch   <- as.character(codinep)
       
+      # ---- persiste escolha do usuário
       save_concorrentes_selecionados(codinep, input$selecao_concorrentes)
       
-      novos_dados_processados <- reprocessar_dados_concorrentes(codinep, input$selecao_concorrentes, dados_atuais$id_municipio)
+      # ---- reprocessa blocos (KPIs/ENEM/Infra/etc.)
+      novos_proc <- reprocessar_dados_concorrentes(
+        codinep          = codinep_ch,
+        ids_concorrentes = as.character(input$selecao_concorrentes),
+        id_municipio     = dados_atuais$id_municipio
+      )
       
-      nomes_all <- readRDS("data/escolas_privadas_nomelista.rds")
-      novos_concorrentes_info <- nomes_all %>% filter(CO_ENTIDADE %in% input$selecao_concorrentes)
-      geo_all_df <- readRDS("data/escolas_geo_com_empty_flag.rds") %>% sf::st_drop_geometry()
+      # === Helper: construir SF de concorrentes com nome + geometria (robusto) =====
+      build_concorrentes_sf <- function(ids_sel, codinep_ch, escola_lon = NA_real_, escola_lat = NA_real_) {
+        ids_sel <- as.character(ids_sel)
+        
+        # 1) bases
+        escolas_sf  <- tryCatch(readRDS("data/processed/escolas_enriquecidas.rds"), error = function(e) NULL)
+        if (!is.null(escolas_sf) && is.na(sf::st_crs(escolas_sf))) escolas_sf <- sf::st_set_crs(escolas_sf, 4326)
+        
+        sf_fallback <- tryCatch(readRDS("data/processed/escolas_privadas_unificadas_sf.rds"), error = function(e) NULL)
+        if (!is.null(sf_fallback) && is.na(sf::st_crs(sf_fallback))) sf_fallback <- sf::st_set_crs(sf_fallback, 4326)
+        
+        geo_ll <- tryCatch(readRDS("data/escolas_geo_com_empty_flag.rds"), error = function(e) NULL)
+        if (!is.null(geo_ll)) {
+          geo_ll <- sf::st_drop_geometry(geo_ll)
+          nm_id <- intersect(c("code_school","id_escola","CO_ENTIDADE"), names(geo_ll))[1]
+          if (length(nm_id)) names(geo_ll)[names(geo_ll)==nm_id] <- "id_escola"
+          geo_ll$id_escola <- as.character(geo_ll$id_escola)
+        }
+        
+        nomes_all <- readRDS("data/escolas_privadas_nomelista.rds") |>
+          dplyr::mutate(CO_ENTIDADE = as.character(CO_ENTIDADE))
+        
+        # 2) ponto da escola alvo
+        escola_pt <- NULL
+        if (!is.null(escolas_sf)) {
+          escola_pt <- escolas_sf |>
+            dplyr::filter(as.character(id_escola) == codinep_ch) |>
+            dplyr::slice(1)
+          if (nrow(escola_pt) == 0) escola_pt <- NULL
+        }
+        if (is.null(escola_pt) && !is.null(sf_fallback)) {
+          escola_pt <- sf_fallback |>
+            dplyr::filter(as.character(id_escola) == codinep_ch) |>
+            dplyr::slice(1)
+          if (nrow(escola_pt) == 0) escola_pt <- NULL
+        }
+        if (is.null(escola_pt) && is.finite(escola_lon) && is.finite(escola_lat)) {
+          escola_pt <- sf::st_sf(
+            id_escola = codinep_ch,
+            geometry  = sf::st_sfc(sf::st_point(c(escola_lon, escola_lat)), crs = 4326)
+          )
+        }
+        
+        # 3) concorrentes a partir das SF
+        conc_sf <- NULL
+        if (!is.null(escolas_sf)) {
+          conc_sf <- escolas_sf |>
+            dplyr::filter(as.character(id_escola) %in% ids_sel) |>
+            dplyr::select(id_escola, geometry)
+        }
+        if (is.null(conc_sf) || nrow(conc_sf) < length(ids_sel)) {
+          if (!is.null(sf_fallback)) {
+            add_fb <- sf_fallback |>
+              dplyr::filter(as.character(id_escola) %in% ids_sel) |>
+              dplyr::select(id_escola, geometry)
+            if (is.null(conc_sf)) {
+              conc_sf <- add_fb
+            } else {
+              conc_sf <- conc_sf |>
+                dplyr::full_join(add_fb, by = "id_escola", suffix = c("", ".fb"))
+              # se houver geometry.fb, usa onde faltar
+              if ("geometry.fb" %in% names(conc_sf)) {
+                idx <- is.na(sf::st_is_empty(conc_sf$geometry)) | sf::st_is_empty(conc_sf$geometry)
+                idx[is.na(idx)] <- TRUE
+                conc_sf$geometry[idx] <- conc_sf$geometry.fb[idx]
+                conc_sf$geometry.fb <- NULL
+              }
+            }
+          }
+        }
+        
+        # 3b) se ainda vazio, cria esqueleto
+        if (is.null(conc_sf)) {
+          geoms <- sf::st_sfc(replicate(length(ids_sel), sf::st_geometrycollection(), simplify = FALSE), crs = 4326)
+          conc_sf <- sf::st_sf(id_escola = ids_sel, geometry = geoms)
+        }
+        conc_sf$id_escola <- as.character(conc_sf$id_escola)
+        
+        # 4) preencher com lat/lon tabular por ID (atribuição por índice)
+        if (!is.null(geo_ll) && nrow(conc_sf)) {
+          # quem ainda não tem ponto?
+          empt <- is.na(sf::st_is_empty(conc_sf$geometry)) | sf::st_is_empty(conc_sf$geometry)
+          empt[is.na(empt)] <- TRUE
+          ids_need <- conc_sf$id_escola[empt]
+          
+          if (length(ids_need)) {
+            lon_nm <- intersect(c("longitude","lon","LONGITUDE","x"), names(geo_ll))[1]
+            lat_nm <- intersect(c("latitude","lat","LATITUDE","y"), names(geo_ll))[1]
+            if (length(lon_nm) && length(lat_nm)) {
+              gg <- geo_ll |>
+                dplyr::filter(id_escola %in% ids_need) |>
+                dplyr::mutate(
+                  longitude = suppressWarnings(as.numeric(.data[[lon_nm]])),
+                  latitude  = suppressWarnings(as.numeric(.data[[lat_nm]]))
+                ) |>
+                dplyr::filter(is.finite(longitude), is.finite(latitude))
+              if (nrow(gg)) {
+                gg_sf <- sf::st_as_sf(gg, coords = c("longitude","latitude"), crs = 4326)
+                # atribuição por ID (tamanho compatível)
+                pos <- match(conc_sf$id_escola, gg_sf$id_escola)
+                take <- !is.na(pos) & empt
+                conc_sf$geometry[take] <- gg_sf$geometry[pos[take]]
+              }
+            }
+          }
+        }
+        
+        # 5) acrescenta NOME (sem depender de 'nm' em mutate)
+        conc_sf <- conc_sf |>
+          dplyr::left_join(nomes_all, by = c("id_escola" = "CO_ENTIDADE"))
+        nm_col <- intersect(c("NO_ENTIDADE","nome_escola","NM_ENTIDADE","NO_NOME_ENTIDADE"), names(conc_sf))[1]
+        conc_sf$nome_escola <- if (length(nm_col)) as.character(conc_sf[[nm_col]]) else as.character(conc_sf$id_escola)
+        
+        # 6) distância
+        if (!is.null(escola_pt) && nrow(conc_sf)) {
+          conc_sf$dist_metros <- suppressWarnings(as.numeric(sf::st_distance(conc_sf, escola_pt[1, ])))
+        } else {
+          conc_sf$dist_metros <- NA_real_
+        }
+        
+        conc_sf |>
+          dplyr::arrange(dplyr::desc(!sf::st_is_empty(geometry)), dist_metros) |>
+          dplyr::distinct(id_escola, .keep_all = TRUE) |>
+          dplyr::slice_head(n = length(ids_sel)) |>
+          dplyr::select(id_escola, nome_escola, dist_metros, geometry)
+      }
       
-      dados_atuais$lista_concorrentes <- novos_concorrentes_info %>%
-        left_join(geo_all_df, by = c("CO_ENTIDADE" = "code_school")) %>%
-        select(id_escola = CO_ENTIDADE, nome_escola = NO_ENTIDADE, latitude, longitude) %>%
-        mutate(dist_metros = NA)
+      # ---- reconstruir lista_concorrentes
+      conc_sf <- build_concorrentes_sf(
+        ids_sel    = as.character(input$selecao_concorrentes),
+        codinep_ch = codinep_ch,
+        escola_lon = suppressWarnings(as.numeric(dados_atuais$longitude)),
+        escola_lat = suppressWarnings(as.numeric(dados_atuais$latitude))
+      )
       
-      dados_finais <- c(dados_atuais[c("id_escola", "nome_escola", "id_municipio", "nome_municipio", "latitude", "longitude", "lista_concorrentes", "data_extracao")], novos_dados_processados)
+      # ---- salvar e atualizar estado
+      dados_atuais$lista_concorrentes <- conc_sf
+      dados_finais <- c(
+        dados_atuais[c("id_escola","nome_escola","id_municipio","nome_municipio","latitude","longitude","lista_concorrentes","data_extracao")],
+        novos_proc
+      )
       
-      caminho_arquivo <- file.path("data", "escolas", paste0(codinep, ".rds"))
+      caminho_arquivo <- file.path("data", "escolas", paste0(codinep_ch, ".rds"))
       saveRDS(dados_finais, caminho_arquivo)
-      
       dados_escola_reativo(dados_finais)
       
       showNotification("Análise atualizada com sucesso!", type = "message", duration = 3)
     })
+    
+    
+    
     
     observeEvent(input$btn_restaurar_padrao, {
       showNotification("Restaurando análise para os 5 concorrentes mais próximos...", type = "message", duration = 3)
       
       save_concorrentes_selecionados(codinep, character(0))
       
-      dados_padrao_originais <- dados_escola_padrao()
-      ids_concorrentes_padrao <- dados_padrao_originais$lista_concorrentes$id_escola
+      dados_padrao_originais <- dados_escola_padrao(); req(dados_padrao_originais)
+      codinep_ch <- as.character(codinep)
+      ids_concorrentes_padrao <- as.character(dados_padrao_originais$lista_concorrentes$id_escola)
       
-      dados_reprocessados_padrao <- reprocessar_dados_concorrentes(codinep, ids_concorrentes_padrao, dados_padrao_originais$id_municipio)
+      dados_reprocessados_padrao <- reprocessar_dados_concorrentes(
+        codinep          = codinep_ch,
+        ids_concorrentes = ids_concorrentes_padrao,
+        id_municipio     = dados_padrao_originais$id_municipio
+      )
       
-      dados_finais_padrao <- c(dados_padrao_originais[c("id_escola", "nome_escola", "id_municipio", "nome_municipio", "latitude", "longitude", "lista_concorrentes", "data_extracao")], dados_reprocessados_padrao)
+      # usa o mesmo helper da atualização (definido no bloco acima)
+      conc_sf <- (function(ids_sel, codinep_ch) {
+        escola_lon <- suppressWarnings(as.numeric(dados_padrao_originais$longitude))
+        escola_lat <- suppressWarnings(as.numeric(dados_padrao_originais$latitude))
+        # reaproveita a função definida no bloco anterior:
+        build_concorrentes_sf(ids_sel, codinep_ch, escola_lon, escola_lat)
+      })(ids_concorrentes_padrao, codinep_ch)
       
-      caminho_arquivo <- file.path("data", "escolas", paste0(codinep, ".rds"))
+      dados_finais_padrao <- c(
+        list(
+          id_escola       = dados_padrao_originais$id_escola,
+          nome_escola     = dados_padrao_originais$nome_escola,
+          id_municipio    = dados_padrao_originais$id_municipio,
+          nome_municipio  = dados_padrao_originais$nome_municipio,
+          latitude        = dados_padrao_originais$latitude,
+          longitude       = dados_padrao_originais$longitude,
+          lista_concorrentes = conc_sf,
+          data_extracao   = Sys.time()
+        ),
+        dados_reprocessados_padrao
+      )
+      
+      caminho_arquivo <- file.path("data", "escolas", paste0(codinep_ch, ".rds"))
       saveRDS(dados_finais_padrao, caminho_arquivo)
-      
       dados_escola_reativo(dados_finais_padrao)
     })
+    
     
     criar_caixa_kpi <- function(dados_segmento) {
       valor1 <- dados_segmento$valor_ano_1
@@ -268,24 +432,130 @@ mod_escola_server <- function(id, user, codinep) {
     })
     
     output$tabela_concorrentes <- DT::renderDataTable({
-      dados <- dados_escola_reativo()
-      req(dados, dados$lista_concorrentes)
-      tabela <- dados$lista_concorrentes %>%
-        rename(`Cód. INEP` = id_escola, `Nome da Escola` = nome_escola)
+      dados <- dados_escola_reativo(); req(dados, dados$lista_concorrentes)
+      df <- dados$lista_concorrentes
+      if (inherits(df, "sf")) df <- sf::st_drop_geometry(df)
+      tabela <- df %>%
+        dplyr::select(`Cód. INEP` = id_escola, `Nome da Escola` = nome_escola,
+                      `Distância (m)` = dplyr::any_of("dist_metros"))
       DT::datatable(tabela, options = list(pageLength = 10, scrollY = "450px"))
     })
     
+    
+    # --- MAPA: escola + concorrentes (limpo e robusto) ---------------------------
     output$mapa_concorrentes <- leaflet::renderLeaflet({
-      dados <- dados_escola_reativo()
-      req(dados, dados$lista_concorrentes, !is.na(dados$latitude), !is.na(dados$longitude))
-      escola_principal <- tibble(nome_escola = dados$nome_escola, latitude = dados$latitude, longitude = dados$longitude, tipo = "Sua Escola")
-      concorrentes <- dados$lista_concorrentes %>% mutate(tipo = "Concorrente") %>% select(nome_escola, latitude, longitude, tipo)
-      df_mapa <- bind_rows(escola_principal, concorrentes) %>% filter(!is.na(latitude), !is.na(longitude))
-      icons <- leaflet::awesomeIcons(icon = 'school', library = 'fa', markerColor = ifelse(df_mapa$tipo == "Sua Escola", "blue", "red"), iconColor = '#FFFFFF')
-      leaflet::leaflet(data = df_mapa) %>%
-        leaflet::addProviderTiles("CartoDB.Positron") %>%
-        leaflet::addAwesomeMarkers(lng = ~longitude, lat = ~latitude, icon = icons, popup = ~htmltools::htmlEscape(nome_escola))
+      req(dados_escola_reativo)
+      dados <- dados_escola_reativo(); req(dados)
+      
+      `%||%` <- function(a,b) if (!is.null(a)) a else b
+      first_col_name <- function(df, candidates) {
+        nm <- candidates[candidates %in% names(df)]
+        if (length(nm)) nm[1] else NULL
+      }
+      # --- formatador de distância (substitui label_number_si) ---
+      fmt_dist <- function(m) {
+        m <- suppressWarnings(as.numeric(m))
+        ifelse(!is.finite(m), "—",
+               ifelse(m < 1000, paste0(round(m), " m"),
+                      paste0(scales::number(m/1000, accuracy = 0.1), " km")))
+      }
+      
+      # 1) Escola
+      escola_pt <- tibble::tibble(
+        nome_plot = as.character(dados$nome_escola %||% "Sua escola"),
+        longitude = suppressWarnings(as.numeric(dados$longitude))[1],
+        latitude  = suppressWarnings(as.numeric(dados$latitude))[1]
+      ) |> dplyr::filter(is.finite(longitude), is.finite(latitude))
+      
+      # 2) Concorrentes -> long/lat
+      conc <- dados$lista_concorrentes; req(!is.null(conc), nrow(conc) > 0)
+      if ("geometry" %in% names(conc)) {
+        conc_wgs <- tryCatch(sf::st_transform(conc, 4326), error = function(e) conc)
+        coords   <- suppressWarnings(sf::st_coordinates(conc_wgs))
+        conc_df  <- dplyr::bind_cols(sf::st_drop_geometry(conc_wgs),
+                                     tibble::tibble(longitude = coords[,1], latitude = coords[,2]))
+      } else {
+        conc_df <- conc
+        lng_nm <- first_col_name(conc_df, c("longitude","lon","LONGITUDE","x"))
+        lat_nm <- first_col_name(conc_df, c("latitude","lat","LATITUDE","y"))
+        conc_df$longitude <- if (!is.null(lng_nm)) suppressWarnings(as.numeric(conc_df[[lng_nm]])) else NA_real_
+        conc_df$latitude  <- if (!is.null(lat_nm)) suppressWarnings(as.numeric(conc_df[[lat_nm]])) else NA_real_
+      }
+      nome_nm <- first_col_name(conc_df, c("nome_escola","NO_ENTIDADE","NO_NOME_ENTIDADE","NM_ENTIDADE","nome"))
+      conc_df$nome_plot <- if (!is.null(nome_nm)) as.character(conc_df[[nome_nm]]) else as.character(conc_df$id_escola)
+      conc_df <- conc_df |> dplyr::filter(is.finite(longitude), is.finite(latitude))
+      
+      # 3) Fallback centro
+      if (!nrow(escola_pt)) {
+        validate(need(nrow(conc_df) > 0, "Sem coordenadas para escola/concorrentes."))
+        escola_pt <- tibble::tibble(
+          nome_plot = dados$nome_escola %||% "Sua escola",
+          longitude = mean(conc_df$longitude, na.rm = TRUE),
+          latitude  = mean(conc_df$latitude,  na.rm = TRUE)
+        )
+      }
+      
+      # 4) Ícones
+      ic_escola <- leaflet::awesomeIcons(icon = "graduation-cap", library = "fa",
+                                         markerColor = "blue", iconColor = "white")
+      ic_conc   <- leaflet::awesomeIcons(icon = "building", library = "fa",
+                                         markerColor = "red", iconColor = "white")
+      
+      # 5) Base
+      m <- leaflet::leaflet(options = leaflet::leafletOptions(zoomControl = TRUE, minZoom = 3)) |>
+        leaflet::addProviderTiles(leaflet::providers$CartoDB.Positron,
+                                  options = leaflet::providerTileOptions(noWrap = TRUE))
+      
+      # Escola
+      m <- m |> leaflet::addAwesomeMarkers(
+        data = escola_pt, lng = ~longitude, lat = ~latitude,
+        icon = ic_escola,
+        label = ~nome_plot, popup = ~nome_plot,
+        options = leaflet::markerOptions(zIndexOffset = 1000)
+      )
+      
+      # Concorrentes
+      if (nrow(conc_df)) {
+        popup_txt <- if ("dist_metros" %in% names(conc_df)) {
+          paste0("<b>", htmltools::htmlEscape(conc_df$nome_plot), "</b>",
+                 "<br/>Dist.: ", fmt_dist(conc_df$dist_metros))
+        } else {
+          htmltools::htmlEscape(conc_df$nome_plot)
+        }
+        
+        m <- m |> leaflet::addAwesomeMarkers(
+          data = conc_df, lng = ~longitude, lat = ~latitude,
+          icon = ic_conc,
+          label = ~nome_plot, popup = popup_txt
+        )
+      }
+      
+      # 6) Enquadrar
+      all_pts <- dplyr::bind_rows(
+        dplyr::mutate(escola_pt, tipo = "escola"),
+        dplyr::mutate(dplyr::select(conc_df, nome_plot, longitude, latitude), tipo = "conc")
+      )
+      if (nrow(all_pts)) {
+        m <- m |>
+          leaflet::fitBounds(lng1 = min(all_pts$longitude), lat1 = min(all_pts$latitude),
+                             lng2 = max(all_pts$longitude), lat2 = max(all_pts$latitude))
+      }
+      
+      # 7) Legenda
+      m |> leaflet::addLegend(
+        position = "bottomleft",
+        colors = c("#2C7BE5", "#E63757"),
+        labels = c("Sua escola", "Concorrentes"),
+        opacity = 1
+      )
     })
+    
+      
+
+    
+    
+    
+    
     
     dados_infra_resumidos <- reactive({
       dados <- dados_escola_reativo()
@@ -331,46 +601,77 @@ mod_escola_server <- function(id, user, codinep) {
       })
     })
     
+    # --- INFRA: tabela detalhada com formatação por célula ----------------------
     output$tabela_infra_detalhada_ui <- renderUI({
+      req(dados_escola_reativo)
       dados <- dados_escola_reativo()
       req(dados, dados$dados_infraestrutura, dados$lista_concorrentes)
       
+      codinep <- as.character(dados$id_escola %||% NA_character_)
       df_infra_raw <- dados$dados_infraestrutura
-      nomes_concorrentes <- dados$lista_concorrentes %>% select(id_escola, nome_escola)
       
-      df_detalhada <- df_infra_raw %>%
-        filter(id_escola %in% c(codinep, dados$lista_concorrentes$id_escola)) %>%
-        left_join(nomes_concorrentes, by = "id_escola") %>%
-        mutate(label = ifelse(id_escola == codinep, "Sua Escola", nome_escola)) %>%
-        select(-id_escola, -nome_escola) %>%
-        pivot_longer(cols = -label, names_to = "indicador", values_to = "valor") %>%
-        mutate(
-          indicador_label = str_replace_all(indicador, "_", " ") %>% 
-            str_remove("^(essencial|lazer|tec|apoio)") %>% 
-            str_trim() %>% 
-            str_to_title()
-        ) %>%
-        select(Indicador = indicador_label, Escola = label, Valor = valor) %>%
-        pivot_wider(names_from = Escola, values_from = Valor) %>%
-        relocate(Indicador, `Sua Escola`)
+      # 1) nomes dos concorrentes (para rótulos)
+      nomes_conc <- dados$lista_concorrentes |>
+        dplyr::select(
+          id_escola,
+          nome_escola = dplyr::any_of(c("NO_ENTIDADE","nome_escola"))
+        )
       
-      df_formatada <- df_detalhada %>%
-        mutate(across(-Indicador, ~ {
-          if_else(
-            Indicador == "Total Dispositivos Aluno",
-            as.character(round(as.numeric(.), 1)),
-            if_else(as.numeric(.) == 1, 
-                    as.character(icon("check", class = "table-icon", style = "color: green;")), 
-                    as.character(icon("times", class = "table-icon", style = "color: red;")))
-          )
-        }))
+      # 2) mantém apenas colunas numéricas/lógicas (evita 'geometry')
+      num_log_cols <- names(df_infra_raw)[vapply(df_infra_raw, \(x) is.numeric(x) || is.logical(x), logical(1))]
+      num_log_cols <- setdiff(num_log_cols, "id_escola")  # não pivotar chave
       
-      tabela_html <- knitr::kable(df_formatada, "html", escape = FALSE, align = c('l', rep('c', ncol(df_formatada) - 1))) %>%
-        kableExtra::kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = T) %>%
+      # 3) monta base longa: escola alvo + concorrentes + média municipal
+      df_long <- df_infra_raw |>
+        dplyr::filter(id_escola %in% c(codinep, nomes_conc$id_escola, "Média Municipal")) |>
+        dplyr::left_join(nomes_conc, by = "id_escola") |>
+        dplyr::mutate(Escola = dplyr::case_when(
+          id_escola == codinep ~ "Sua Escola",
+          id_escola == "Média Municipal" ~ "Média Municipal",
+          TRUE ~ dplyr::coalesce(nome_escola, id_escola)
+        )) |>
+        dplyr::select(Escola, dplyr::any_of(num_log_cols)) |>
+        tidyr::pivot_longer(cols = -Escola, names_to = "indicador", values_to = "valor") |>
+        dplyr::mutate(
+          Indicador = indicador |>
+            stringr::str_replace_all("_", " ") |>
+            stringr::str_remove("^(essencial|lazer|tec|apoio)\\s*") |>
+            stringr::str_trim() |>
+            stringr::str_to_title()
+        ) |>
+        dplyr::select(Indicador, Escola, valor)
+      
+      # 4) formatação célula-a-célula (vectorizada)
+      safe_num <- function(x) suppressWarnings(as.numeric(x))
+      df_long <- df_long |>
+        dplyr::mutate(Valor_fmt = dplyr::case_when(
+          Indicador == "Total Dispositivos Aluno" ~ as.character(round(safe_num(valor), 1)),
+          safe_num(valor) == 1 ~ as.character(shiny::icon("check", class = "table-icon", style = "color:#16a34a;")),
+          TRUE ~ as.character(shiny::icon("times", class = "table-icon", style = "color:#dc2626;"))
+        ))
+      
+      # 5) volta para wide, garantindo ordem de colunas
+      ordem_cols <- c("Sua Escola", setdiff(unique(df_long$Escola), c("Sua Escola")))
+      df_fmt <- df_long |>
+        dplyr::select(-valor) |>
+        tidyr::pivot_wider(names_from = Escola, values_from = Valor_fmt) |>
+        dplyr::relocate(Indicador, dplyr::any_of(ordem_cols))
+      
+      # 6) tabela HTML
+      tbl <- knitr::kable(df_fmt, "html", escape = FALSE,
+                          align = c("l", rep("c", ncol(df_fmt) - 1))) |>
+        kableExtra::kable_styling(bootstrap_options = c("striped", "hover", "condensed"),
+                                  full_width = TRUE) |>
         kableExtra::scroll_box(width = "100%")
       
-      HTML(tabela_html)
+      # 7) um CSSzinho pros ícones, se ainda não tiver
+      shiny::tagList(
+        tags$style(HTML(".table-icon{font-size:14px; line-height:1;}")),
+        HTML(tbl)
+      )
     })
+    
+    
     
     # --- Lógica para Visão Consolidada ---
     output$ui_desempenho_areas_consolidado <- renderUI({
