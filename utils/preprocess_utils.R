@@ -281,6 +281,41 @@ processar_enem_local <- function(codinep, ids_concorrentes, id_municipio){
   agg
 }
 
+# -------------- Dados individuais de concorrentes --------------
+obter_dados_individuais_concorrentes <- function(codinep, ids_concorrentes, id_municipio) {
+  anos_matricula <- c(2023, 2024)
+  
+  basedosdados::set_billing_id(Sys.getenv("BD_BILLING_ID", unset = "able-study-331220"))
+  con <- DBI::dbConnect(bigrquery::bigquery(), project = "basedosdados",
+                        billing = Sys.getenv("BD_BILLING_ID", unset = "able-study-331220"))
+  on.exit(DBI::dbDisconnect(con), add = TRUE)
+  
+  # Query para dados individuais
+  q_mat <- glue::glue_sql("
+    SELECT
+      ano, CAST(id_escola AS STRING) AS id_escola,
+      COALESCE(quantidade_matricula_infantil_creche, 0) + COALESCE(quantidade_matricula_infantil_pre_escola, 0) AS mat_infantil,
+      COALESCE(quantidade_matricula_fundamental_anos_iniciais, 0) AS mat_fund_iniciais,
+      COALESCE(quantidade_matricula_fundamental_anos_finais,   0) AS mat_fund_finais,
+      (COALESCE(quantidade_matricula_fundamental_anos_iniciais,0) + 
+       COALESCE(quantidade_matricula_fundamental_anos_finais,  0)) AS mat_fundamental,
+      COALESCE(quantidade_matricula_medio, 0) AS mat_medio
+    FROM `basedosdados.br_inep_censo_escolar.escola`
+    WHERE CAST(id_escola AS STRING) IN ({ids_concorrentes*}) AND ano IN ({anos_matricula*})
+  ", .con = con)
+  
+  df_matriculas <- DBI::dbGetQuery(con, q_mat)
+  
+  # Dados individuais de cada concorrente
+  dados_individuais <- list()
+  for (id_conc in ids_concorrentes) {
+    dados_conc <- .make_bloco_matriculas(df_matriculas %>% filter(id_escola == id_conc), anos_matricula)
+    dados_individuais[[as.character(id_conc)]] <- dados_conc
+  }
+  
+  return(dados_individuais)
+}
+
 # -------------- Reprocessamento (concorrentes selecionados) --------------
 reprocessar_dados_concorrentes <- function(codinep, ids_concorrentes, id_municipio){
   anos_matricula <- c(2023, 2024)
@@ -309,9 +344,22 @@ reprocessar_dados_concorrentes <- function(codinep, ids_concorrentes, id_municip
   df_matriculas <- DBI::dbGetQuery(con, q_mat)
   df_infra      <- fetch_infra_data(todos_ids, id_municipio, ano_infra, con)
   
+  # Dados da escola principal
   dados_propria_escola        <- .make_bloco_matriculas(df_matriculas %>% filter(id_escola == codinep), anos_matricula)
+  
+  # Dados agregados dos concorrentes (média)
   dados_concorrentes_proximos <- .make_bloco_matriculas(df_matriculas %>% filter(id_escola != codinep), anos_matricula)
   
+  # Dados individuais de cada concorrente
+  dados_concorrentes_individualizados <- list()
+  for (id_conc in ids_concorrentes) {
+    if (id_conc != codinep) {
+      dados_conc <- .make_bloco_matriculas(df_matriculas %>% filter(id_escola == id_conc), anos_matricula)
+      dados_concorrentes_individualizados[[as.character(id_conc)]] <- dados_conc
+    }
+  }
+  
+  # ✅ CORREÇÃO: Parêntese balanceado na query de mercado
   q_mkt <- glue::glue_sql("
     SELECT ano,
       COALESCE(SUM(quantidade_matricula_infantil_creche), 0) + COALESCE(SUM(quantidade_matricula_infantil_pre_escola), 0) AS mat_infantil,
@@ -323,6 +371,7 @@ reprocessar_dados_concorrentes <- function(codinep, ids_concorrentes, id_municip
     WHERE CAST(id_municipio AS STRING) = {id_municipio} AND ano IN ({anos_matricula*})
     GROUP BY ano
   ", .con = con)
+  
   df_mkt <- DBI::dbGetQuery(con, q_mkt)
   
   # tabelas detalhadas (iniciais/finais)
@@ -334,6 +383,7 @@ reprocessar_dados_concorrentes <- function(codinep, ids_concorrentes, id_municip
   list(
     dados_propria_escola        = dados_propria_escola,
     dados_concorrentes_proximos = dados_concorrentes_proximos,
+    dados_concorrentes_individualizados = dados_concorrentes_individualizados,
     dados_mercado_municipio     = .make_bloco_matriculas(df_mkt, anos_matricula),
     dados_infraestrutura        = df_infra,
     dados_enem_areas            = dados_enem$areas,

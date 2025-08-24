@@ -4,121 +4,291 @@
 mod_escola_ui <- function(id) {
   ns <- NS(id)
   
-  tagList(
-    shinyjs::useShinyjs(), # Habilita o uso do shinyjs para feedback
-    div(class = "page-header", h2(textOutput(ns("nome_escola_titulo")))),
+  tagList(tags$style(HTML("
+  .concorrente-col {
+    flex: 1;
+    min-width: 220px;
+    padding: 0 5px;
+  }
+  
+  .concorrente-column {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    background: white;
+    border-radius: 8px;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+    overflow: hidden;
+  }
+  
+  .concorrente-header {
+    background: linear-gradient(135deg, #5a36a9 0%, #6f42c1 100%);
+    padding: 12px 10px;
+    text-align: center;
+    margin-bottom: 0;
+  }
+  
+  .concorrente-header h5 {
+    margin: 0;
+    font-weight: bold;
+    color: white;
+    font-size: 0.95em;
+    line-height: 1.2;
+    text-shadow: 0 1px 2px rgba(0,0,0,0.2);
+  }
+  
+  .concorrente-header p {
+    margin: 5px 0 0 0;
+    font-size: 0.75em;
+    color: rgba(255,255,255,0.95);
+  }
+  
+  .concorrente-cards {
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    flex-grow: 1;
+    overflow: visible !important;
+    max-height: none !important;
+  }
+  
+  .stat-card {
+    background: #f8f9fa;
+    padding: 10px;
+    border-radius: 6px;
+    border-left: 3px solid #6f42c1;
+    flex-shrink: 0;
+  }
+  
+  .stat-card h6 {
+    color: #495057;
+    font-weight: 600;
+    margin: 0 0 6px 0;
+    font-size: 0.8em;
+    border-bottom: 1px solid #dee2e6;
+    padding-bottom: 4px;
+  }
+  
+  .stat-card p {
+    margin: 3px 0;
+    font-size: 0.75em;
+    color: #6c757d;
+  }
+  
+  /* Layout responsivo */
+  @media (max-width: 1200px) {
+    .concorrente-col {
+      min-width: 200px;
+    }
+  }
+  
+  @media (max-width: 992px) {
+    .concorrente-col {
+      min-width: 180px;
+    }
     
-    navbarPage(
-      title = NULL,
-      
-      # --- Aba Visão Geral ---
-      tabPanel("Visão Geral", 
-               fluidRow(
-                 column(12,
-                        h3("Resumo de Matrículas (Variação 2023 vs 2024)"),
-                        p("Comparativo do desempenho da sua escola em relação aos concorrentes selecionados e ao mercado total do seu município.")
-                 )
-               ),
-               br(),
-               fluidRow(
-                 column(4, h4(icon("school"), "Sua Escola"), hr(), uiOutput(ns("kpis_escola"))),
-                 column(4, h4(icon("users"), "Média dos Concorrentes"), hr(), uiOutput(ns("kpis_concorrentes"))),
-                 column(4, h4(icon("chart-pie"), "Mercado (Município)"), hr(), uiOutput(ns("kpis_mercado")))
-               )
-      ),
-      
-      # --- Aba Benchmark Concorrentes ---
-      tabPanel("Benchmark Concorrentes", 
-               sidebarLayout(
-                 sidebarPanel(
-                   h4("Seleção de Concorrentes"),
-                   p("Escolha até 5 escolas para uma análise personalizada. A análise padrão usa os 5 concorrentes mais próximos."),
-                   
-                   selectizeInput(ns("selecao_concorrentes"), 
-                                  label = "Busque e selecione as escolas:",
-                                  choices = NULL,
-                                  multiple = TRUE,
-                                  options = list(maxItems = 5, placeholder = 'Digite para buscar...')),
-                   
-                   actionButton(ns("btn_atualizar_analise"), "Atualizar e Salvar Seleção", icon = icon("sync"), class = "btn-primary btn-block"),
-                   br(),
-                   actionButton(ns("btn_restaurar_padrao"), "Restaurar Padrão", icon = icon("undo"), class = "btn-secondary btn-block"),
-                   downloadButton(ns("dl_onepager"), "Baixar relatório (PDF)")
-                 ),
-                 
-                 mainPanel(
-                   tabsetPanel(
-                     type = "tabs",
-                     tabPanel("Mapa de Concorrentes", leaflet::leafletOutput(ns("mapa_concorrentes"), height = "600px")),
-                     tabPanel("Lista de Concorrentes Atuais", DT::dataTableOutput(ns("tabela_concorrentes")))
-                   )
-                 )
-               )
-      ),
-      
-      # --- Aba Análise de Infraestrutura ---
-      tabPanel("Análise de Infraestrutura",
-               fluidRow(
-                 column(12,
-                        h3("Comparativo de Infraestrutura (Censo 2024)"),
-                        p("Análise comparativa dos principais indicadores de infraestrutura da sua escola em relação aos concorrentes selecionados e à média do município.")
-                 )
-               ),
-               hr(),
-               fluidRow(
-                 column(12,
-                        h4("Análise Detalhada"),
-                        tabsetPanel(
-                          type = "tabs",
-                          tabPanel("Resumo Comparativo", 
-                                   br(),
-                                   uiOutput(ns("cards_infra_detalhada"))),
-                          tabPanel("Detalhe por Concorrente", 
-                                   br(),
-                                   uiOutput(ns("tabela_infra_detalhada_ui")))
-                        )
-                 )
-               )
-      ),
-      
-      # --- Aba Desempenho Acadêmico com Sub-abas ---
-      tabPanel("Desempenho Acadêmico",
-               h3("Análise de Desempenho - ENEM 2024"),
-               p("Comparativo das médias do ENEM por área de conhecimento e detalhamento das competências da redação."),
-               tabsetPanel(
-                 type = "tabs",
-                 tabPanel("Visão Consolidada",
-                          br(),
-                          uiOutput(ns("ui_desempenho_areas_consolidado")),
-                          hr(),
-                          uiOutput(ns("ui_desempenho_redacao_consolidado"))
-                 ),
-                 tabPanel("Detalhe por Concorrente",
-                          br(),
-                          uiOutput(ns("ui_desempenho_areas_detalhado")),
-                          hr(),
-                          uiOutput(ns("ui_desempenho_redacao_detalhado"))
-                 )
-               )
-      ),
-      
-      tabPanel("Chat com IA",
-               icon = icon("robot"),
-               mod_chat_ui(ns("chat_ia"))
-      )
-    )
+    .concorrente-header {
+      padding: 10px 8px;
+    }
+    
+    .concorrente-cards {
+      padding: 10px;
+    }
+  }
+  
+  /* Container principal sem scroll */
+  .concorrentes-detailed-view {
+    overflow: visible !important;
+    max-height: none !important;
+  }
+  
+  /* Garantir que tudo seja visível */
+  .benchmark-analysis {
+    overflow: visible !important;
+  }
+  
+  /* Scroll horizontal apenas se necessário para muitas colunas */
+  .benchmark-analysis .fluid-row {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    padding-bottom: 10px;
+  }
+  
+  /* Esconder scrollbar mas manter funcionalidade */
+  .benchmark-analysis .fluid-row::-webkit-scrollbar {
+    height: 6px;
+  }
+  
+  .benchmark-analysis .fluid-row::-webkit-scrollbar-track {
+    background: #f1f1f1;
+    border-radius: 3px;
+  }
+  
+  .benchmark-analysis .fluid-row::-webkit-scrollbar-thumb {
+    background: #c1c1c1;
+    border-radius: 3px;
+  }
+  
+  .benchmark-analysis .fluid-row::-webkit-scrollbar-thumb:hover {
+    background: #a8a8a8;
+  }
+")),
+          shinyjs::useShinyjs(), # Habilita o uso do shinyjs para feedback
+          #div(class = "page-header", h2(textOutput(ns("nome_escola_titulo")))),
+          
+          navbarPage(
+            title = NULL,
+            
+            # --- Aba Visão Geral ---
+            tabPanel("Visão Geral", 
+                     fluidRow(
+                       column(12,
+                              h3("Resumo de Matrículas (Variação 2023 vs 2024)"),
+                              p("Comparativo do desempenho da sua escola em relação aos concorrentes selecionados e ao mercado total do seu município.")
+                       )
+                     ),
+                     br(),
+                     fluidRow(
+                       column(4, h4(icon("school"), "Sua Escola"), hr(), uiOutput(ns("kpis_escola"))),
+                       column(4, h4(icon("users"), "Média dos Concorrentes"), hr(), uiOutput(ns("kpis_concorrentes"))),
+                       column(4, h4(icon("chart-pie"), "Mercado (Município)"), hr(), uiOutput(ns("kpis_mercado")))
+                     )
+            ),
+            
+            # --- Aba Benchmark Concorrentes ---
+            tabPanel("Benchmark Concorrentes", 
+                     div(class = "benchmark-container",
+                         
+                         # Seleção de concorrentes - Layout vertical
+                         div(class = "benchmark-selection",
+                             h4("Seleção de Concorrentes", icon("users")),
+                             p("Selecione até 5 escolas concorrentes para análise detalhada."),
+                             
+                             selectizeInput(ns("selecao_concorrentes"), 
+                                            label = NULL,
+                                            choices = NULL,
+                                            multiple = TRUE,
+                                            width = "100%",
+                                            options = list(maxItems = 5, 
+                                                           placeholder = 'Digite o nome da escola...',
+                                                           dropdownParent = 'body')),
+                             
+                             div(class = "selection-buttons",
+                                 actionButton(ns("btn_atualizar_analise"), "Atualizar Análise", 
+                                              icon = icon("sync"), class = "btn-primary"),
+                                 actionButton(ns("btn_restaurar_padrao"), "Restaurar Padrão", 
+                                              icon = icon("undo"), class = "btn-secondary")
+                             )
+                         ),
+                         
+                         # Análise detalhada - Cards padronizados
+                         div(class = "benchmark-analysis",
+                             h4("Análise Detalhada por Concorrente", icon("chart-bar")),
+                             uiOutput(ns("kpis_concorrentes_detalhados"))
+                         ),
+                         
+                         # Mapa - Agora fica por último
+                         div(class = "benchmark-map",
+                             h4("Localização Geográfica", icon("map-marked-alt")),
+                             p("Visualização da localização da sua escola e dos concorrentes selecionados."),
+                             leaflet::leafletOutput(ns("mapa_concorrentes"), height = "400px")
+                         ),
+                         
+                         # Botão de download
+                         div(class = "benchmark-download",
+                             downloadButton(ns("dl_onepager"), "Baixar Relatório Completo (PDF)", 
+                                            class = "btn-success")
+                         )
+                     )
+            ),
+            
+            # --- Aba Análise de Infraestrutura ---
+            tabPanel("Análise de Infraestrutura",
+                     fluidRow(
+                       column(12,
+                              h3("Comparativo de Infraestrutura (Censo 2024)"),
+                              p("Análise comparativa dos principais indicadores de infraestrutura da sua escola em relação aos concorrentes selecionados e à média do município.")
+                       )
+                     ),
+                     hr(),
+                     fluidRow(
+                       column(12,
+                              h4("Análise Detalhada"),
+                              tabsetPanel(
+                                type = "tabs",
+                                tabPanel("Resumo Comparativo", 
+                                         br(),
+                                         uiOutput(ns("cards_infra_detalhada"))),
+                                tabPanel("Detalhe por Concorrente", 
+                                         br(),
+                                         uiOutput(ns("tabela_infra_detalhada_ui")))
+                              )
+                       )
+                     )
+            ),
+            
+            # --- Aba Desempenho Acadêmico com Sub-abas ---
+            tabPanel("Desempenho Acadêmico",
+                     h3("Análise de Desempenho - ENEM 2024"),
+                     p("Comparativo das médias do ENEM por área de conhecimento e detalhamento das competências da redação."),
+                     tabsetPanel(
+                       type = "tabs",
+                       tabPanel("Visão Consolidada",
+                                br(),
+                                uiOutput(ns("ui_desempenho_areas_consolidado")),
+                                hr(),
+                                uiOutput(ns("ui_desempenho_redacao_consolidado"))
+                       ),
+                       tabPanel("Detalhe por Concorrente",
+                                br(),
+                                uiOutput(ns("ui_desempenho_areas_detalhado")),
+                                hr(),
+                                uiOutput(ns("ui_desempenho_redacao_detalhado"))
+                       )
+                     )
+            ),
+            
+            tabPanel("Chat com IA",
+                     icon = icon("robot"),
+                     mod_chat_ui(ns("chat_ia"))
+            )
+          )
   )
 }
 
 
 mod_escola_server <- function(id, user, codinep) {
   moduleServer(id, function(input, output, session) {
-    
+    source("utils/global_reactives.R")
     source("utils/preprocess_utils.R", local = TRUE)
     source("utils/db_utils.R", local = TRUE)
     
     dados_escola_reativo <- reactiveVal(NULL)
     dados_escola_padrao <- reactiveVal(NULL)
+    
+    # No server do módulo, após dados_escola_reativo
+    dados_concorrentes_individuais <- reactiveVal(NULL)
+    
+    # Observar mudanças na seleção de concorrentes
+    observeEvent(input$selecao_concorrentes, {
+      req(input$selecao_concorrentes, length(input$selecao_concorrentes) > 0)
+      
+      showNotification("Carregando dados individuais dos concorrentes...")
+      
+      tryCatch({
+        source("utils/preprocess_utils.R", local = TRUE)
+        dados_individuais <- obter_dados_individuais_concorrentes(
+          codinep, 
+          input$selecao_concorrentes,
+          dados_escola_reativo()$id_municipio
+        )
+        dados_concorrentes_individuais(dados_individuais)
+      }, error = function(e) {
+        showNotification(paste("Erro ao carregar dados individuais:", e$message), type = "error")
+      })
+    })
+    
     
     observe({
       req(codinep)
@@ -139,7 +309,7 @@ mod_escola_server <- function(id, user, codinep) {
       dados <- dados_escola_reativo()
       nm <- if (!is.null(dados)) (dados$nome_escola %||% "") else ""
       if (!nzchar(nm)) nm <- "Sua Escola"
-      paste("Painel da Escola:", nm)
+      nm  # Retorna apenas o nome, sem "Painel da Escola:"
     })
     
     
@@ -413,22 +583,125 @@ mod_escola_server <- function(id, user, codinep) {
       )
     }
     
+    # Função para criar cards detalhados de matrículas por concorrente
+    criar_card_concorrente_detalhado <- function(dados_concorrente, nome_concorrente) {
+      div(class = "concorrente-card",
+          h5(nome_concorrente),
+          lapply(dados_concorrente, function(segmento) {
+            if (!is.null(segmento$valor_ano_1) && !is.null(segmento$valor_ano_2)) {
+              div(class = "segmento-card",
+                  h6(segmento$label),
+                  p(paste("2023:", segmento$valor_ano_1, "| 2024:", segmento$valor_ano_2)),
+                  p(style = paste0("color:", ifelse(grepl("-", segmento$taxa_de_variacao), "#dc3545", "#198754"), ";"),
+                    segmento$taxa_de_variacao)
+              )
+            }
+          })
+      )
+    }
+    
+    # Função para extrair dados de um concorrente específico
+    extrair_dados_concorrente <- function(dados_escola, id_concorrente) {
+      # Buscar dados do concorrente específico
+      concorrente_info <- dados_escola$lista_concorrentes %>%
+        filter(id_escola == id_concorrente)
+      
+      # Buscar dados de matrículas deste concorrente
+      # (Esta função precisará ser adaptada dependendo da estrutura dos seus dados)
+      dados_matriculas <- NULL
+      
+      # Se os dados individuais por concorrente não estiverem disponíveis,
+      # podemos calcular a partir dos dados agregados ou buscar de outra fonte
+      return(list(
+        info = concorrente_info,
+        matriculas = dados_matriculas
+      ))
+    }
+    
     output$kpis_escola <- renderUI({
       dados <- dados_escola_reativo()
       req(dados)
       lapply(dados$dados_propria_escola, criar_caixa_kpi)
     })
     
-    output$kpis_concorrentes <- renderUI({
+    # Substituir o output kpis_concorrentes_detalhados
+    output$kpis_concorrentes_detalhados <- renderUI({
+      dados_indiv <- dados_concorrentes_individuais()
+      req(dados_indiv, length(dados_indiv) > 0)
+      
+      # Garantir até 5 concorrentes
+      concorrentes_ids <- names(dados_indiv)[1:min(5, length(dados_indiv))]
+      
+      fluidRow(
+        style = "margin: 0 -5px; display: flex; flex-wrap: nowrap; overflow-x: auto;",
+        lapply(concorrentes_ids, function(id_conc) {
+          concorrente_info <- dados_escola_reativo()$lista_concorrentes %>%
+            filter(id_escola == id_conc)
+          
+          nome_concorrente <- concorrente_info$nome_escola %||% paste("Concorrente", id_conc)
+          distancia <- ifelse(!is.na(concorrente_info$dist_metros), 
+                              paste(round(concorrente_info$dist_metros), "m"), 
+                              "N/A")
+          
+          div(class = "concorrente-col",
+              style = "flex: 1; min-width: 220px; padding: 0 5px;",
+              
+              div(class = "concorrente-column",
+                  div(class = "concorrente-header",
+                      h5(nome_concorrente, style = "margin: 0; font-weight: bold; color: white; font-size: 0.95em; line-height: 1.2;"),
+                      p(style = "margin: 3px 0 0 0; font-size: 0.75em; color: rgba(255,255,255,0.9);", 
+                        icon("map-marker-alt"), " ", distancia)
+                  ),
+                  
+                  div(class = "concorrente-cards",
+                      lapply(dados_indiv[[id_conc]], function(segmento) {
+                        if (!is.null(segmento$valor_ano_1) && !is.null(segmento$valor_ano_2)) {
+                          div(class = "stat-card",
+                              h6(segmento$label, style = "font-size: 0.8em; margin: 0 0 5px 0; color: #495057; font-weight: 600;"),
+                              p(style = "margin: 2px 0; font-size: 0.75em; color: #6c757d;", 
+                                "23: ", segmento$valor_ano_1),
+                              p(style = "margin: 2px 0; font-size: 0.75em; color: #6c757d;", 
+                                "24: ", segmento$valor_ano_2),
+                              p(style = "margin: 3px 0 0 0; font-weight: bold; font-size: 0.8em;",
+                                style = paste0("color:", ifelse(grepl("-", segmento$taxa_de_variacao), "#dc3545", "#198754"), ";"),
+                                segmento$taxa_de_variacao)
+                          )
+                        }
+                      })
+                  )
+              )
+          )
+        })
+      )
+    })
+    
+    # Nova tabela com informações dos concorrentes
+    output$tabela_info_concorrentes <- DT::renderDataTable({
       dados <- dados_escola_reativo()
-      req(dados)
-      lapply(dados$dados_concorrentes_proximos, criar_caixa_kpi)
+      req(dados, dados$lista_concorrentes)
+      
+      tabela <- dados$lista_concorrentes %>%
+        select(`Cód. INEP` = id_escola, 
+               `Nome da Escola` = nome_escola,
+               `Distância (metros)` = dist_metros) %>%
+        mutate(`Distância (metros)` = ifelse(is.na(`Distância (metros)`), 
+                                             "N/A", 
+                                             round(`Distância (metros)`)))
+      
+      DT::datatable(tabela, 
+                    options = list(pageLength = 5, dom = 't'),
+                    rownames = FALSE)
     })
     
     output$kpis_mercado <- renderUI({
       dados <- dados_escola_reativo()
       req(dados)
       lapply(dados$dados_mercado_municipio, criar_caixa_kpi)
+    })
+    output$kpis_concorrentes <- renderUI({
+      dados <- dados_escola_reativo()
+      req(dados)
+      lapply(dados$dados_concorrentes_proximos, criar_caixa_kpi)  # ← DEVE usar dados_concorrentes_proximos
     })
     
     output$tabela_concorrentes <- DT::renderDataTable({
@@ -550,8 +823,8 @@ mod_escola_server <- function(id, user, codinep) {
       )
     })
     
-      
-
+    
+    
     
     
     
@@ -827,7 +1100,35 @@ mod_escola_server <- function(id, user, codinep) {
         })
       }
     )
+    # Reactive value para o nome da escola
+    nome_exportado <- reactiveVal(NULL)
     
+    # Quando os dados carregarem, captura o nome
+    observe({
+      dados <- dados_escola_reativo()
+      if (!is.null(dados) && !is.null(dados$nome_escola)) {
+        nome_exportado(dados$nome_escola)
+        cat("Nome exportado do módulo:", dados$nome_escola, "\n")
+      }
+    })
     
+    # Exporta o nome para o app principal
+    return(
+      list(
+        nome_escola = reactive({ nome_exportado() })
+      )
+    )
+    # No final do mod_escola_server.R
+    observe({
+      dados <- dados_escola_reativo()
+      if (!is.null(dados) && !is.null(dados$nome_escola)) {
+        cat("=== DEBUG MOD_ESCOLA ===\n")
+        cat("Nome da escola no módulo:", dados$nome_escola, "\n")
+        cat("=========================\n")
+      }
+    })
   })
-}
+}  # Quando os dados da escola carregarem, atualiza globalmente
+
+    
+    

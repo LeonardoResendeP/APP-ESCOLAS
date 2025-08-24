@@ -163,5 +163,26 @@ save_concorrentes_selecionados <- function(codinep_principal, codineps_concorren
     dbWriteTable(con, "escola_concorrentes", df_to_insert, append = TRUE)
   }
 }
+
+# Função para buscar nome da escola pelo código INEP
+get_school_name_from_db <- function(codinep) {
+  tryCatch({
+    conn <- dbConnect(RSQLite::SQLite(), "database.sqlite")
+    
+    query <- "SELECT nome_escola FROM escolas WHERE codinep = ?"
+    result <- dbGetQuery(conn, query, params = list(codinep))
+    
+    dbDisconnect(conn)
+    
+    if (nrow(result) > 0) {
+      return(result$nome_escola[1])
+    } else {
+      return(NULL)
+    }
+  }, error = function(e) {
+    warning("Erro ao buscar nome da escola: ", e$message)
+    return(NULL)
+  })
+}
 # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> FIM DAS NOVAS FUNÇÕES >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
 
