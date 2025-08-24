@@ -1303,6 +1303,23 @@
       ],
       "Hash": "05ce1ed077e8c97fbb3ec1cb078f1159"
     },
+    "openxlsx": {
+      "Package": "openxlsx",
+      "Version": "4.2.8",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Requirements": [
+        "R",
+        "Rcpp",
+        "grDevices",
+        "methods",
+        "stats",
+        "stringi",
+        "utils",
+        "zip"
+      ],
+      "Hash": "0dae94b258dc5abc4713eacdbbebcb51"
+    },
     "packrat": {
       "Package": "packrat",
       "Version": "0.9.3",

@@ -1127,7 +1127,8 @@ cat(sprintf("  report(s)/     : %.2f (idem)\n", size_gb(c("report","reports"))))
     extra_data <- c(
       "report/assets/logo_explora.png",
       "report/assets/logo_primeira_escolha.png",
-      "report/assets/logo_rabbit.jpg"
+      "report/assets/logo_rabbit.jpg",
+      "data/escolas_privadas_nomelista.rds"
     )
     whitelist <- unique(c(whitelist, extra_data))
     whitelist <- whitelist[file.exists(whitelist)]

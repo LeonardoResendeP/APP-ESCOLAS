@@ -6,7 +6,28 @@ library(htmlwidgets)
 mod_escola_ui <- function(id) {
   ns <- NS(id)
   
-  tagList(
+  tagList(# No UI, adicione este código no tagList principal
+    tags$script(HTML("
+$(document).on('shiny:connected', function() {
+  // Melhora a aparência do Selectize
+  $('.selectize-input input').attr('placeholder', 'Digite para buscar escolas...');
+  
+  // Ajusta o dropdown para ficar acima se não couber embaixo
+  $(document).on('click', '.selectize-control', function() {
+    var $dropdown = $(this).find('.selectize-dropdown');
+    var windowHeight = $(window).height();
+    var dropdownHeight = $dropdown.outerHeight();
+    var inputOffset = $(this).offset().top;
+    var inputHeight = $(this).outerHeight();
+    
+    if (inputOffset + inputHeight + dropdownHeight > windowHeight - 50) {
+      $dropdown.addClass('dropdown-up');
+    } else {
+      $dropdown.removeClass('dropdown-up');
+    }
+  });
+});
+")),
     shinyjs::useShinyjs(),
     
     navbarPage(
@@ -25,52 +46,69 @@ mod_escola_ui <- function(id) {
                  column(4, h4(icon("school"), "Sua Escola"), hr(), uiOutput(ns("kpis_escola"))),
                  column(4, h4(icon("users"), "Média dos Concorrentes"), hr(), uiOutput(ns("kpis_concorrentes"))),
                  column(4, h4(icon("chart-pie"), "Mercado (Município)"), hr(), uiOutput(ns("kpis_mercado")))
+               ),
+               # Botão de download na Visão Geral
+               div(class = "benchmark-download text-center",
+                   style = "margin: 2rem 0;",
+                   downloadButton(ns("dl_onepager"), "📄 Baixar Relatório Completo (PDF)", 
+                                  class = "btn-success btn-lg",
+                                  style = "font-size: 1.1rem; padding: 12px 24px;")
                )
       ),
       
       # --- Aba Benchmark Concorrentes ---
       tabPanel("Benchmark Concorrentes", 
                div(class = "benchmark-container",
+
                    
-                   # Seleção de concorrentes
-                   div(class = "benchmark-selection",
-                       h4("Seleção de Concorrentes", icon("users")),
-                       p("Selecione até 5 escolas concorrentes para análise detalhada."),
-                       
-                       selectizeInput(ns("selecao_concorrentes"), 
-                                      label = NULL,
-                                      choices = NULL,
-                                      multiple = TRUE,
-                                      width = "100%",
-                                      options = list(maxItems = 5, 
-                                                     placeholder = 'Digite o nome da escola...',
-                                                     dropdownParent = 'body')),
-                       
-                       div(class = "selection-buttons",
-                           actionButton(ns("btn_atualizar_analise"), "Atualizar Análise", 
-                                        icon = icon("sync"), class = "btn-primary"),
-                           actionButton(ns("btn_restaurar_padrao"), "Restaurar Padrão", 
-                                        icon = icon("undo"), class = "btn-secondary")
-                       )
-                   ),
                    
-                   # Análise detalhada
-                   div(class = "benchmark-analysis",
-                       h4("Análise Detalhada por Concorrente", icon("chart-bar")),
+                   # Card de Análise Detalhada
+                   div(class = "benchmark-card",
+                       div(class = "benchmark-card-title",
+                           icon("chart-bar", style = "color: var(--primary);"),
+                           "Análise Detalhada por Concorrente"
+                       ),
+                       p("Comparativo detalhado das métricas de matrícula entre sua escola e os concorrentes selecionados. Os dados mostram a variação 2023 vs 2024."),
+                       
                        uiOutput(ns("kpis_concorrentes_detalhados"))
                    ),
-                   
-                   # Mapa
-                   div(class = "benchmark-map",
-                       h4("Localização Geográfica", icon("map-marked-alt")),
-                       p("Visualização da localização da sua escola e dos concorrentes selecionados."),
-                       leaflet::leafletOutput(ns("mapa_concorrentes"), height = "400px")
-                   ),
-                   
-                   # Botão de download
-                   div(class = "benchmark-download",
-                       downloadButton(ns("dl_onepager"), "Baixar Relatório Completo (PDF)", 
-                                      class = "btn-success")
+                   div(class = "benchmark-card",
+                       div(class = "benchmark-card-title",
+                           icon("users", style = "color: var(--primary);"),
+                           "Seleção de Concorrentes"
+                       ),
+                       p("Selecione até 5 escolas concorrentes para análise comparativa detalhada. A seleção personalizada permite focar nos competidores mais relevantes para sua estratégia."),
+                       
+                       div(class = "selectize-container",
+                           selectizeInput(ns("selecao_concorrentes"), 
+                                          label = NULL,
+                                          choices = NULL,
+                                          multiple = TRUE,
+                                          width = "100%",
+                                          options = list(
+                                            maxItems = 5, 
+                                            placeholder = 'Digite o nome da escola...',
+                                            dropdownParent = 'body',
+                                            highlight = TRUE,
+                                            render = I("{
+                                        item: function(item, escape) {
+                                          return '<div class=\"item\" style=\"padding: 8px; border-bottom: 1px solid #f0f0f0;\">' + escape(item.value) + '</div>';
+                                        },
+                                        option: function(item, escape) {
+                                          return '<div style=\"padding: 8px; border-bottom: 1px solid #f0f0f0;\">' + escape(item.value) + '</div>';
+                                        }
+                                      }")
+                                          ))
+                       ),
+                       
+                       div(class = "benchmark-actions",
+                           actionButton(ns("btn_atualizar_analise"), 
+                                        label = tagList(icon("sync"), "Atualizar Análise"), 
+                                        class = "btn-primary btn-icon"),
+                           actionButton(ns("btn_restaurar_padrao"), 
+                                        label = tagList(icon("undo"), "Restaurar Padrão"), 
+                                        class = "btn-secondary btn-icon")
+                       )
                    )
                )
       ),
@@ -189,7 +227,32 @@ mod_escola_server <- function(id, user, codinep) {
         }
       }
     })
-    
+    # Função para obter nome do concorrente pelo ID
+    get_nome_concorrente <- function(id_conc) {
+      dados <- dados_escola_reativo()
+      if (!is.null(dados$lista_concorrentes)) {
+        conc <- dados$lista_concorrentes %>%
+          filter(id_escola == id_conc) %>%
+          pull(nome_escola)
+        
+        if (length(conc) > 0 && !is.na(conc)) {
+          return(conc)
+        }
+      }
+      
+      # Fallback: buscar da base completa
+      tryCatch({
+        nomes_df <- readRDS("data/escolas_privadas_nomelista.rds")
+        nome <- nomes_df %>%
+          filter(CO_ENTIDADE == id_conc) %>%
+          pull(NO_ENTIDADE)
+        
+        if (length(nome) > 0) return(nome)
+        return(paste("Concorrente", id_conc))
+      }, error = function(e) {
+        return(paste("Concorrente", id_conc))
+      })
+    }
     mod_chat_server("chat_ia", dados_escola = dados_escola_reativo)
     
     output$nome_escola_titulo <- renderText({
@@ -216,11 +279,20 @@ mod_escola_server <- function(id, user, codinep) {
     })
     
     observe({
-      df <- concorrentes_disponiveis(); req(nrow(df) > 0)
-      choices <- stats::setNames(df$CO_ENTIDADE, df$display_name)
+      df <- concorrentes_disponiveis()
+      req(nrow(df) > 0)
+      
+      # A abordagem original que funcionava
+      choices <- df$display_name
+      names(choices) <- df$CO_ENTIDADE
       
       dados <- dados_escola_reativo()
-      sel <- tryCatch(as.character(dados$lista_concorrentes$id_escola), error = function(e) NULL)
+      sel <- tryCatch({
+        # Para cada concorrente selecionado, encontrar o display_name correspondente
+        concorrentes_atuais <- dados$lista_concorrentes$id_escola
+        matches <- df$display_name[df$CO_ENTIDADE %in% concorrentes_atuais]
+        as.character(matches)
+      }, error = function(e) NULL)
       
       updateSelectizeInput(session,
                            "selecao_concorrentes",
@@ -237,11 +309,15 @@ mod_escola_server <- function(id, user, codinep) {
       dados_atuais <- dados_escola_reativo(); req(dados_atuais)
       codinep_ch <- as.character(codinep)
       
-      save_concorrentes_selecionados(codinep, input$selecao_concorrentes)
+      # input$selecao_concorrentes já contém os CO_ENTIDADE (valores)
+      # porque usamos setNames(df$CO_ENTIDADE, df$display_name)
+      selected_ids <- input$selecao_concorrentes
+      
+      save_concorrentes_selecionados(codinep, selected_ids)
       
       novos_proc <- reprocessar_dados_concorrentes(
         codinep = codinep_ch,
-        ids_concorrentes = as.character(input$selecao_concorrentes),
+        ids_concorrentes = as.character(selected_ids),
         id_municipio = dados_atuais$id_municipio
       )
       
@@ -250,7 +326,7 @@ mod_escola_server <- function(id, user, codinep) {
       }
       
       conc_sf <- build_concorrentes_sf(
-        ids_sel = as.character(input$selecao_concorrentes),
+        ids_sel = as.character(selected_ids),
         codinep_ch = codinep_ch,
         escola_lon = suppressWarnings(as.numeric(dados_atuais$longitude)),
         escola_lat = suppressWarnings(as.numeric(dados_atuais$latitude))
@@ -272,11 +348,15 @@ mod_escola_server <- function(id, user, codinep) {
     observeEvent(input$btn_restaurar_padrao, {
       showNotification("Restaurando análise para os 5 concorrentes mais próximos...", type = "message", duration = 3)
       
+      # Para restaurar padrão, passamos character(0) para limpar a seleção personalizada
       save_concorrentes_selecionados(codinep, character(0))
       
       dados_padrao_originais <- dados_escola_padrao(); req(dados_padrao_originais)
       codinep_ch <- as.character(codinep)
       ids_concorrentes_padrao <- as.character(dados_padrao_originais$lista_concorrentes$id_escola)
+      
+      # Atualiza o selectize para mostrar os concorrentes padrão
+      updateSelectizeInput(session, "selecao_concorrentes", selected = ids_concorrentes_padrao)
       
       dados_reprocessados_padrao <- reprocessar_dados_concorrentes(
         codinep = codinep_ch,
@@ -331,48 +411,55 @@ mod_escola_server <- function(id, user, codinep) {
       dados_indiv <- dados_concorrentes_individuais()
       req(dados_indiv, length(dados_indiv) > 0)
       
-      concorrentes_ids <- names(dados_indiv)[1:min(5, length(dados_indiv))]
+      concorrentes_ids <- names(dados_indiv)
       
-      fluidRow(
-        style = "margin: 0 -5px; display: flex; flex-wrap: nowrap; overflow-x: auto;",
-        lapply(concorrentes_ids, function(id_conc) {
-          concorrente_info <- dados_escola_reativo()$lista_concorrentes %>%
-            filter(id_escola == id_conc)
-          
-          nome_concorrente <- concorrente_info$nome_escola %||% paste("Concorrente", id_conc)
-          distancia <- ifelse(!is.na(concorrente_info$dist_metros), 
-                              paste(round(concorrente_info$dist_metros), "m"), 
-                              "N/A")
-          
-          div(class = "concorrente-col",
-              style = "flex: 1; min-width: 220px; padding: 0 5px;",
-              
-              div(class = "concorrente-column",
-                  div(class = "concorrente-header",
-                      h5(nome_concorrente, style = "margin: 0; font-weight: bold; color: white; font-size: 0.95em; line-height: 1.2;"),
-                      p(style = "margin: 3px 0 0 0; font-size: 0.75em; color: rgba(255,255,255,0.9);", 
-                        icon("map-marker-alt"), " ", distancia)
-                  ),
-                  
-                  div(class = "concorrente-cards",
-                      lapply(dados_indiv[[id_conc]], function(segmento) {
-                        if (!is.null(segmento$valor_ano_1) && !is.null(segmento$valor_ano_2)) {
-                          div(class = "stat-card",
-                              h6(segmento$label, style = "font-size: 0.8em; margin: 0 0 5px 0; color: #495057; font-weight: 600;"),
-                              p(style = "margin: 2px 0; font-size: 0.75em; color: #6c757d;", 
-                                "23: ", segmento$valor_ano_1),
-                              p(style = "margin: 2px 0; font-size: 0.75em; color: #6c757d;", 
-                                "24: ", segmento$valor_ano_2),
-                              p(style = "margin: 3px 0 0 0; font-weight: bold; font-size: 0.8em;",
-                                style = paste0("color:", ifelse(grepl("-", segmento$taxa_de_variacao), "#dc3545", "#198754"), ";"),
-                                segmento$taxa_de_variacao)
-                          )
-                        }
-                      })
-                  )
-              )
-          )
-        })
+      div(class = "concorrentes-grid",
+          lapply(concorrentes_ids, function(id_conc) {
+            concorrente_info <- dados_escola_reativo()$lista_concorrentes %>%
+              filter(id_escola == id_conc)
+            
+            nome_concorrente <- get_nome_concorrente(id_conc)
+            distancia <- ifelse(!is.na(concorrente_info$dist_metros), 
+                                paste(round(concorrente_info$dist_metros), "m de distância"), 
+                                "Distância não disponível")
+            
+            div(class = "concorrente-card",
+                div(class = "concorrente-header",
+                    h5(class = "concorrente-nome", nome_concorrente),
+                    p(class = "concorrente-distancia",
+                      icon("map-marker-alt"), distancia)
+                ),
+                
+                div(class = "concorrente-content",
+                    div(class = "concorrente-stats",
+                        lapply(dados_indiv[[id_conc]], function(segmento) {
+                          if (!is.null(segmento$valor_ano_1) && !is.null(segmento$valor_ano_2)) {
+                            div(class = "stat-item",
+                                div(class = "stat-label", segmento$label),
+                                div(class = "stat-values",
+                                    p(class = "stat-value", 
+                                      paste("2023:", format(segmento$valor_ano_1, big.mark = ".", decimal.mark = ","))),
+                                    p(class = "stat-value", 
+                                      paste("2024:", format(segmento$valor_ano_2, big.mark = ".", decimal.mark = ",")))
+                                ),
+                                p(class = "stat-variation",
+                                  style = paste0("background-color:", 
+                                                 ifelse(grepl("-", segmento$taxa_de_variacao), 
+                                                        "rgba(220, 53, 69, 0.1)", 
+                                                        "rgba(25, 135, 84, 0.1)"),
+                                                 "; color:",
+                                                 ifelse(grepl("-", segmento$taxa_de_variacao), 
+                                                        "#dc3545", 
+                                                        "#198754"),
+                                                 ";"),
+                                  segmento$taxa_de_variacao)
+                            )
+                          }
+                        })
+                    )
+                )
+            )
+          })
       )
     })
     
@@ -609,7 +696,8 @@ mod_escola_server <- function(id, user, codinep) {
       }
     })
     
-    # --- INFRAESTRUTURA: Versão Bonita e Estilizada ---
+    # --- INFRAESTRUTURA: Versão Corrigida com Identidade Visual ---
+    # --- INFRAESTRUTURA: Versão Corrigida (SEM ERROS) ---
     
     output$cards_infra_detalhada <- renderUI({
       dados <- dados_escola_reativo()
@@ -631,7 +719,7 @@ mod_escola_server <- function(id, user, codinep) {
         nossa_escola <- df_infra %>% 
           filter(id_escola == as.character(codinep))
         
-        # Calcula média dos concorrentes (excluindo nossa escola e média municipal se existir)
+        # Calcula média dos concorrentes
         concorrentes <- df_infra %>%
           filter(!id_escola %in% c(as.character(codinep), "Média Municipal")) 
         
@@ -641,20 +729,19 @@ mod_escola_server <- function(id, user, codinep) {
             mutate(id_escola = "Média Concorrentes")
         } else {
           media_concorrentes <- data.frame(id_escola = "Média Concorrentes")
-          # Adiciona colunas numéricas vazias
           numeric_cols <- names(df_infra)[sapply(df_infra, is.numeric)]
           for (col in numeric_cols) {
             media_concorrentes[[col]] <- NA
           }
         }
         
-        # Verifica se existe média municipal
+        # Média municipal
         media_municipal <- df_infra %>% 
           filter(id_escola == "Média Municipal")
         
         if (nrow(media_municipal) == 0) {
           media_municipal <- data.frame(id_escola = "Média Municipal")
-          for (col in names(df_infra)[-1]) { # Exclui id_escola
+          for (col in names(df_infra)[-1]) {
             media_municipal[[col]] <- NA
           }
         }
@@ -685,44 +772,48 @@ mod_escola_server <- function(id, user, codinep) {
               indicador == "tec_total_dispositivos_aluno" ~ "Dispositivos por Aluno",
               indicador == "apoio_psicologo" ~ "Psicólogo",
               indicador == "apoio_bibliotecario" ~ "Bibliotecário",
-              TRUE ~ str_to_title(str_replace_all(indicador, "_", " "))
+              TRUE ~ indicador  # Fallback seguro
             )
           ) %>%
           pivot_wider(names_from = id_escola, values_from = valor)
         
-        # Função para criar cards bonitos
+        # Função para criar cards - RESUMO COMPARATIVO (porcentagem)
         criar_cartao_indicador <- function(row) {
           indicador_nome <- row[["indicador_label"]]
           codinep_str <- as.character(codinep)
           
-          # Valores com fallback
-          valor_escola <- row[[codinep_str]] %||% NA
-          valor_concorrentes <- row[["Média Concorrentes"]] %||% NA
-          valor_municipal <- row[["Média Municipal"]] %||% NA
+          # Valores
+          valor_escola <- if (!is.null(row[[codinep_str]])) row[[codinep_str]] else NA
+          valor_concorrentes <- if (!is.null(row[["Média Concorrentes"]])) row[["Média Concorrentes"]] else NA
+          valor_municipal <- if (!is.null(row[["Média Municipal"]])) row[["Média Municipal"]] else NA
           
-          # Define se é booleano (0/1) ou numérico
           is_boolean <- indicador_nome != "Dispositivos por Aluno"
           
-          formatar_valor <- function(valor, is_boolean) {
+          # Formatação para RESUMO (porcentagem)
+          formatar_valor_resumo <- function(valor, is_boolean, tipo = "default") {
             if (is.na(valor)) return(tags$span("N/A", class = "text-muted"))
             
-            if (is_boolean) {
-              if (valor == 1) {
-                return(tags$span(icon("check"), " Sim", class = "text-success"))
-              } else {
-                return(tags$span(icon("times"), " Não", class = "text-danger"))
-              }
+            if (tipo == "municipal") {
+              # Média municipal em porcentagem
+              return(tags$span(scales::percent(valor, accuracy = 1), 
+                               class = "text-primary"))
+            } else if (is_boolean) {
+              # Booleanos em porcentagem
+              return(tags$span(scales::percent(valor, accuracy = 1),
+                               class = ifelse(valor >= 0.5, "text-success", "text-warning")))
             } else {
-              return(tags$span(round(valor, 1), class = "text-primary"))
+              # Dispositivos por aluno - NÚMERO INTEIRO
+              return(tags$span(round(valor), class = "text-info"))  # ← round() sem decimal
             }
           }
           
-          formatar_linha <- function(label, valor, emoji) {
+          formatar_linha <- function(label, valor, emoji, tipo = "default") {
             tags$div(class = "indicator-row",
                      tags$span(class = "indicator-label", 
                                tags$span(style = "font-size: 1.2em; margin-right: 8px;", emoji),
                                label),
-                     tags$span(class = "indicator-value", formatar_valor(valor, is_boolean))
+                     tags$span(class = "indicator-value", 
+                               formatar_valor_resumo(valor, is_boolean, tipo))
             )
           }
           
@@ -745,16 +836,7 @@ mod_escola_server <- function(id, user, codinep) {
                   
                   formatar_linha("Sua Escola", valor_escola, "🏫"),
                   formatar_linha("Concorrentes", valor_concorrentes, "👥"),
-                  formatar_linha("Município", valor_municipal, "🏙️"),
-                  
-                  # Barra de progresso para valores booleanos
-                  if (is_boolean && !is.na(valor_escola)) {
-                    tags$div(class = "progress-bar-container",
-                             tags$div(class = "progress-bar-fill", 
-                                      style = paste0("width: ", valor_escola * 100, "%;"),
-                                      style = ifelse(valor_escola == 1, "background: var(--success);", "background: var(--danger);"))
-                    )
-                  }
+                  formatar_linha("Município", valor_municipal, "🏙️", "municipal")
               )
           )
         }
@@ -766,14 +848,14 @@ mod_escola_server <- function(id, user, codinep) {
             df_cat <- df_long %>% filter(categoria == cat)
             if (nrow(df_cat) > 0) {
               tagList(
-                tags$div(class = "category-header",
-                         tags$h4(class = "category-title",
+                tags$div(class = "category-header-resumo",
+                         tags$h4(class = "category-title-resumo",
                                  case_when(
                                    cat == "essencial" ~ "🏗️ Infraestrutura Essencial",
                                    cat == "lazer" ~ "🎯 Áreas de Lazer",
                                    cat == "tec" ~ "💻 Tecnologia",
                                    cat == "apoio" ~ "👥 Apoio Profissional",
-                                   TRUE ~ str_to_title(cat)
+                                   TRUE ~ cat
                                  )
                          )
                 ),
@@ -798,7 +880,6 @@ mod_escola_server <- function(id, user, codinep) {
       })
     })
     
-    # Tabela detalhada estilizada
     output$tabela_infra_detalhada_ui <- renderUI({
       dados <- dados_escola_reativo()
       
@@ -806,43 +887,138 @@ mod_escola_server <- function(id, user, codinep) {
         return(
           div(class = "alert alert-info",
               icon("sync", class = "spinning"),
-              h4("Carregando tabela detalhada...")
+              h4("Carregando dados de infraestrutura..."),
+              p("Aguarde enquanto os dados são processados.")
           )
         )
       }
       
       tryCatch({
         df_infra <- dados$dados_infraestrutura
+        concorrentes <- dados$lista_concorrentes
         
-        # Prepara os dados para a tabela
-        df_tabela <- df_infra %>%
-          mutate(
-            Escola = case_when(
-              id_escola == as.character(codinep) ~ "Sua Escola",
-              id_escola == "Média Municipal" ~ "Média Municipal",
-              TRUE ~ id_escola
-            )
+        # Mapeia ID para nome da escola - CORREÇÃO PARA SF
+        mapa_nomes <- data.frame(
+          id_escola = character(),
+          nome_escola = character(),
+          stringsAsFactors = FALSE
+        )
+        
+        # Adiciona concorrentes se existirem - TRATAMENTO PARA OBJETOS SF
+        if (!is.null(concorrentes) && nrow(concorrentes) > 0) {
+          # Converte objeto sf para dataframe se necessário
+          if (inherits(concorrentes, "sf")) {
+            concorrentes_df <- sf::st_drop_geometry(concorrentes)
+          } else {
+            concorrentes_df <- as.data.frame(concorrentes)
+          }
+          
+          if ("id_escola" %in% names(concorrentes_df) && "nome_escola" %in% names(concorrentes_df)) {
+            mapa_nomes <- concorrentes_df %>%
+              select(id_escola, nome_escola) %>%
+              mutate_all(as.character) %>%
+              distinct()
+          }
+        }
+        
+        # Adiciona escola principal e média municipal
+        mapa_nomes <- bind_rows(
+          mapa_nomes,
+          data.frame(
+            id_escola = c(as.character(codinep), "Média Municipal"),
+            nome_escola = c("Sua Escola", "Média Municipal"),
+            stringsAsFactors = FALSE
+          )
+        )
+        
+        # Transformação dos dados
+        df_long <- df_infra %>%
+          mutate(id_escola = as.character(id_escola)) %>%
+          left_join(mapa_nomes, by = "id_escola") %>%
+          mutate(Escola = coalesce(nome_escola, id_escola)) %>%
+          select(-id_escola, -nome_escola) %>%
+          pivot_longer(
+            cols = -Escola, 
+            names_to = "Item", 
+            values_to = "Valor"
           ) %>%
-          select(-id_escola) %>%
-          select(Escola, everything())
+          pivot_wider(
+            names_from = Escola, 
+            values_from = Valor
+          )
         
-        # Renomeia as colunas para nomes amigáveis
-        names(df_tabela) <- c("Escola", "Água Potável", "Biblioteca", "Lab. Informática", 
-                              "Lab. Ciências", "Quadra Esportes", "Acessibilidade PNE", 
-                              "Refeitório", "Área Verde", "Parque Infantil", "Quadra Coberta",
-                              "Internet Geral", "Banda Larga", "Internet Alunos", "Lousa Digital",
-                              "Dispositivos por Aluno", "Psicólogo", "Bibliotecário")
+        # Renomeia os itens para nomes amigáveis
+        itens_amigaveis <- c(
+          "essencial_agua_potavel" = "Água Potável",
+          "essencial_biblioteca" = "Biblioteca",
+          "essencial_lab_informatica" = "Lab. Informática",
+          "essencial_lab_ciencias" = "Lab. Ciências",
+          "essencial_quadra_esportes" = "Quadra Esportes",
+          "essencial_acessibilidade_pne" = "Acessibilidade PNE",
+          "essencial_refeitorio" = "Refeitório",
+          "lazer_area_verde" = "Área Verde",
+          "lazer_parque_infantil" = "Parque Infantil",
+          "lazer_quadra_coberta" = "Quadra Coberta",
+          "tec_internet_geral" = "Internet Geral",
+          "tec_banda_larga" = "Banda Larga",
+          "tec_internet_para_alunos" = "Internet Alunos",
+          "tec_lousa_digital" = "Lousa Digital",
+          "tec_total_dispositivos_aluno" = "Dispositivos por Aluno",
+          "apoio_psicologo" = "Psicólogo",
+          "apoio_bibliotecario" = "Bibliotecário"
+        )
+        
+        df_long$Item <- itens_amigaveis[df_long$Item]
+        df_long$Item <- as.character(df_long$Item)
+        
+        # Aplica formatação
+        escolas_colunas <- names(df_long)[names(df_long) != "Item"]
+        
+        for (col in escolas_colunas) {
+          df_long[[col]] <- sapply(seq_len(nrow(df_long)), function(i) {
+            valor <- df_long[[col]][i]
+            item <- df_long$Item[i]
+            
+            if (is.na(valor)) return("❓")
+            
+            if (item == "Dispositivos por Aluno") {
+              return(as.character(round(as.numeric(valor))))
+            } else if (col == "Média Municipal") {
+              return(scales::percent(as.numeric(valor), accuracy = 1))
+            } else {
+              return(ifelse(as.numeric(valor) == 1, "✅", "❌"))
+            }
+          })
+        }
+        
+        # Ordenar itens
+        ordem_itens <- c(
+          "Água Potável", "Biblioteca", "Lab. Informática", "Lab. Ciências",
+          "Quadra Esportes", "Acessibilidade PNE", "Refeitório",
+          "Área Verde", "Parque Infantil", "Quadra Coberta",
+          "Internet Geral", "Banda Larga", "Internet Alunos", "Lousa Digital", "Dispositivos por Aluno",
+          "Psicólogo", "Bibliotecário"
+        )
+        
+        ordem_itens <- ordem_itens[ordem_itens %in% df_long$Item]
+        
+        if (length(ordem_itens) > 0) {
+          df_long <- df_long %>%
+            mutate(Item = factor(Item, levels = ordem_itens)) %>%
+            arrange(Item) %>%
+            mutate(Item = as.character(Item))
+        }
         
         div(
           h4("Visão Detalhada por Escola", class = "mb-3"),
           div(class = "table-responsive",
               DT::renderDataTable({
                 DT::datatable(
-                  df_tabela,
+                  df_long,
                   class = "performance-table",
                   options = list(
                     dom = 'Bfrtip',
-                    pageLength = 10,
+                    pageLength = 20,
                     scrollX = TRUE,
                     buttons = c('copy', 'csv', 'excel'),
                     language = list(
@@ -853,14 +1029,13 @@ mod_escola_server <- function(id, user, codinep) {
                   escape = FALSE
                 ) %>%
                   DT::formatStyle(
-                    columns = 2:18,
-                    backgroundColor = styleEqual(c(0, 1), c('#f8d7da', '#d4edda')),
-                    color = styleEqual(c(0, 1), c('#721c24', '#155724'))
+                    columns = escolas_colunas,
+                    textAlign = 'center',
+                    fontSize = '16px'
                   ) %>%
                   DT::formatStyle(
-                    "Dispositivos por Aluno",
-                    backgroundColor = styleInterval(c(10, 30), c('#f8d7da', '#fff3cd', '#d4edda')),
-                    color = styleInterval(c(10, 30), c('#721c24', '#856404', '#155724'))
+                    "Item",
+                    fontWeight = 'bold'
                   )
               })
           )
@@ -870,10 +1045,12 @@ mod_escola_server <- function(id, user, codinep) {
         div(class = "alert alert-danger",
             icon("exclamation-triangle"),
             h4("Erro ao carregar tabela"),
-            p("Detalhes do erro:", tags$code(e$message))
+            p("Detalhes do erro:", tags$code(e$message)),
+            p("Por favor, contate o suporte técnico.")
         )
       })
     })
+
     # Reactive value para o nome da escola
     nome_exportado <- reactiveVal(NULL)
     
