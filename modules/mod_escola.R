@@ -1,6 +1,8 @@
 # --- Bibliotecas necessárias para as novas abas ---
 # Certifique-se de ter instalado: install.packages(c("plotly", "knitr", "kableExtra", "scales", "leaflet", "shinyjs"))
-
+library(plotly)
+library(DT)
+library(htmlwidgets)
 mod_escola_ui <- function(id) {
   ns <- NS(id)
   
@@ -229,23 +231,103 @@ mod_escola_ui <- function(id) {
             ),
             
             # --- Aba Desempenho Acadêmico com Sub-abas ---
+            # --- Aba Desempenho Acadêmico com Sub-abas ---
             tabPanel("Desempenho Acadêmico",
-                     h3("Análise de Desempenho - ENEM 2024"),
-                     p("Comparativo das médias do ENEM por área de conhecimento e detalhamento das competências da redação."),
-                     tabsetPanel(
-                       type = "tabs",
-                       tabPanel("Visão Consolidada",
-                                br(),
-                                uiOutput(ns("ui_desempenho_areas_consolidado")),
-                                hr(),
-                                uiOutput(ns("ui_desempenho_redacao_consolidado"))
-                       ),
-                       tabPanel("Detalhe por Concorrente",
-                                br(),
-                                uiOutput(ns("ui_desempenho_areas_detalhado")),
-                                hr(),
-                                uiOutput(ns("ui_desempenho_redacao_detalhado"))
-                       )
+                     div(class = "academic-performance",
+                         div(class = "performance-card",
+                             h3(class = "academic-section-title", "Análise de Desempenho - ENEM 2024"),
+                             p("Comparativo das médias do ENEM por área de conhecimento e detalhamento das competências da redação.")
+                         ),
+                         
+                         tabsetPanel(
+                           type = "tabs",
+                           
+                           tabPanel("Visão Consolidada",
+                                    br(),
+                                    div(class = "performance-card",
+                                        h4("Comparativo de Médias por Área"),
+                                        
+                                        # LEGENDA 1
+                                        div(class = "performance-legend",
+                                            div(class = "legend-item",
+                                                span(class = "legend-color legend-school"),
+                                                "Sua Escola"
+                                            ),
+                                            div(class = "legend-item",
+                                                span(class = "legend-color legend-competitors"),
+                                                "Média Concorrentes"
+                                            ),
+                                            div(class = "legend-item",
+                                                span(class = "legend-color legend-municipality"),
+                                                "Média Municipal"
+                                            )
+                                        ),
+                                        
+                                        uiOutput(ns("ui_desempenho_areas_consolidado"))
+                                    ),
+                                    
+                                    div(class = "performance-card",
+                                        h4("Detalhamento da Nota de Redação"),
+                                        
+                                        # LEGENDA 2
+                                        div(class = "performance-legend",
+                                            div(class = "legend-item",
+                                                span(class = "legend-color legend-school"),
+                                                "Sua Escola"
+                                            ),
+                                            div(class = "legend-item",
+                                                span(class = "legend-color legend-competitors"),
+                                                "Média Concorrentes"
+                                            ),
+                                            div(class = "legend-item",
+                                                span(class = "legend-color legend-municipality"),
+                                                "Média Municipal"
+                                            )
+                                        ),
+                                        
+                                        uiOutput(ns("ui_desempenho_redacao_consolidado"))
+                                    )
+                           ),
+                           
+                           tabPanel("Detalhe por Concorrente",
+                                    br(),
+                                    div(class = "performance-card",
+                                        h4("Comparativo de Médias por Área"),
+                                        
+                                        # LEGENDA 3
+                                        div(class = "performance-legend",
+                                            div(class = "legend-item",
+                                                span(class = "legend-color legend-school"),
+                                                "Sua Escola"
+                                            ),
+                                            div(class = "legend-item",
+                                                span(class = "legend-color legend-competitors"),
+                                                "Concorrentes"
+                                            )
+                                        ),
+                                        
+                                        uiOutput(ns("ui_desempenho_areas_detalhado"))
+                                    ),
+                                    
+                                    div(class = "performance-card",
+                                        h4("Detalhamento da Nota de Redação"),
+                                        
+                                        # LEGENDA 4
+                                        div(class = "performance-legend",
+                                            div(class = "legend-item",
+                                                span(class = "legend-color legend-school"),
+                                                "Sua Escola"
+                                            ),
+                                            div(class = "legend-item",
+                                                span(class = "legend-color legend-competitors"),
+                                                "Concorrentes"
+                                            )
+                                        ),
+                                        
+                                        uiOutput(ns("ui_desempenho_redacao_detalhado"))
+                                    )
+                           )
+                         )
                      )
             ),
             
@@ -950,7 +1032,9 @@ mod_escola_server <- function(id, user, codinep) {
     output$ui_desempenho_areas_consolidado <- renderUI({
       ns <- session$ns
       fluidRow(
-        column(7, h4("Comparativo de Médias por Área"), plotly::plotlyOutput(ns("plot_enem_areas_consolidado"))),
+        column(7, h4("Comparativo de Médias por Área"), div(class = "radar-chart-container",
+                                                            plotly::plotlyOutput(ns("plot_enem_areas_consolidado"))
+        )),
         column(5, h4("Tabela de Médias"), DT::dataTableOutput(ns("tabela_enem_areas_consolidado")))
       )
     })
@@ -966,14 +1050,30 @@ mod_escola_server <- function(id, user, codinep) {
     })
     
     output$tabela_enem_areas_consolidado <- DT::renderDataTable({
-      dados <- dados_escola_reativo()
-      req(dados, dados$dados_enem_areas)
-      dados$dados_enem_areas %>%
+      req(dados_escola_reativo())
+      
+      validate(
+        need(!is.null(dados_escola_reativo()$dados_enem_areas), 
+             "Dados de desempenho não disponíveis.")
+      )
+      
+      dados_escola_reativo()$dados_enem_areas %>%
         filter(tipo %in% c("Sua Escola", "Média Concorrentes", "Média Municipal")) %>%
         mutate(nota = round(nota, 1)) %>%
         select(Área = area, Categoria = escola_label, Nota = nota) %>%
         pivot_wider(names_from = Categoria, values_from = Nota) %>%
-        DT::datatable(options = list(dom = 't'), rownames = FALSE)
+        DT::datatable(
+          class = "performance-table",
+          options = list(
+            dom = 't',
+            pageLength = 10,
+            language = list(
+              emptyTable = "Nenhum dado disponível",
+              zeroRecords = "Nenhum registro encontrado"
+            )
+          ),
+          rownames = FALSE
+        )
     })
     
     output$ui_desempenho_redacao_consolidado <- renderUI({
@@ -1002,14 +1102,46 @@ mod_escola_server <- function(id, user, codinep) {
         mutate(nota = round(nota, 1)) %>%
         select(Competência = competencia, Categoria = escola_label, Nota = nota) %>%
         pivot_wider(names_from = Categoria, values_from = Nota) %>%
-        DT::datatable(options = list(dom = 't'), rownames = FALSE)
+        DT::datatable(
+          ...,
+          class = "performance-table",
+          options = list(
+            dom = 't',
+            pageLength = 10
+          ),
+          rownames = FALSE
+        )
     })
     
+    # Função para criar barras de competência
+output$competencias_bars <- renderUI({
+    req(dados_escola_reativo())
+    dados <- dados_escola_reativo()$dados_enem_redacao
+    
+    tagList(
+        h4("Competências da Redação", style = "margin-bottom: 20px;"),
+        lapply(1:5, function(i) {
+            comp <- paste("Competência", i)
+            valor <- mean(dados$nota[dados$competencia == comp], na.rm = TRUE)
+            
+            div(class = "competency-bar",
+                span(class = "competency-label", comp),
+                span(class = "competency-value", round(valor, 1)),
+                div(class = "competency-visual",
+                    div(class = "competency-fill", 
+                        style = paste0("width: ", (valor/200)*100, "%;"))
+                )
+            )
+        })
+    )
+})
     # --- Lógica para Visão Detalhada ---
     output$ui_desempenho_areas_detalhado <- renderUI({
       ns <- session$ns
       fluidRow(
-        column(7, h4("Comparativo de Médias por Área"), plotly::plotlyOutput(ns("plot_enem_areas_detalhado"))),
+        column(7, h4("Comparativo de Médias por Área"), div(class = "radar-chart-container",
+                                                            plotlyOutput(ns("plot_enem_areas_consolidado"), height = "400px")
+        )),
         column(5, h4("Tabela de Médias"), DT::dataTableOutput(ns("tabela_enem_areas_detalhado")))
       )
     })
@@ -1032,7 +1164,15 @@ mod_escola_server <- function(id, user, codinep) {
         mutate(nota = round(nota, 1)) %>%
         select(Área = area, Escola = escola_label, Nota = nota) %>%
         pivot_wider(names_from = Escola, values_from = Nota) %>%
-        DT::datatable(options = list(dom = 't'), rownames = FALSE)
+        DT::datatable(
+          ...,
+          class = "performance-table",
+          options = list(
+            dom = 't',
+            pageLength = 10
+          ),
+          rownames = FALSE
+        )
     })
     
     output$ui_desempenho_redacao_detalhado <- renderUI({
@@ -1061,7 +1201,15 @@ mod_escola_server <- function(id, user, codinep) {
         mutate(nota = round(nota, 1)) %>%
         select(Competência = competencia, Escola = escola_label, Nota = nota) %>%
         pivot_wider(names_from = Escola, values_from = Nota) %>%
-        DT::datatable(options = list(dom = 't'), rownames = FALSE)
+        DT::datatable(
+          ...,
+          class = "performance-table",
+          options = list(
+            dom = 't',
+            pageLength = 10
+          ),
+          rownames = FALSE
+        )
     })
     # ---- Download do One-Pager ----
     # modules/mod_escola.R — trecho do server com downloadHandler
