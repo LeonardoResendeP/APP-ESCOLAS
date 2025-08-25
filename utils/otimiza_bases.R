@@ -1125,12 +1125,9 @@ cat(sprintf("  report(s)/     : %.2f (idem)\n", size_gb(c("report","reports"))))
 
     # --- adicionar esses dados leves esperados pelo app ---
     extra_data <- c(
-      "report/assets/logo_explora.png",
-      "report/assets/logo_primeira_escolha.png",
-      "report/assets/logo_rabbit.jpg",
-      "data/escolas_privadas_nomelista.rds"
+      "data/escolas"
     )
-    whitelist <- unique(c(whitelist, extra_data))
+    whitelist <- unique(c(whitelist_final, extra_data))
     whitelist <- whitelist[file.exists(whitelist)]
     
     install.packages("here")   # instala localmente
@@ -1160,4 +1157,276 @@ cat(sprintf("  report(s)/     : %.2f (idem)\n", size_gb(c("report","reports"))))
     
     renv::install(c("here","htmltools","kableExtra","jsonlite"))
     renv::snapshot()
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    # ===================================================================
+    #   SCRIPT DE DIAGNÓSTICO DE ARQUIVOS DEPLOYADOS NO SHINYAPPS.IO
+    # ===================================================================
+    
+    # Carrega a biblioteca necessária
+    if (!requireNamespace("rsconnect", quietly = TRUE)) {
+      install.packages("rsconnect")
+    }
+    library(rsconnect)
+    
+    cat("--- Iniciando verificação de arquivos no shinyapps.io ---\n\n")
+    
+    # --- PASSO 1: Listar aplicativos na sua conta ---
+    cat("Buscando aplicativos na sua conta...\n")
+    apps <- rsconnect::applications()
+    
+    if (nrow(apps) == 0) {
+      stop("Nenhum aplicativo encontrado na sua conta do shinyapps.io. Verifique se você configurou a conta corretamente com `rsconnect::setAccountInfo`.")
+    }
+    
+    # --- PASSO 2: Selecionar o aplicativo para inspecionar ---
+    app_path <- ""
+    if (nrow(apps) == 1) {
+      cat("Encontrado 1 aplicativo:", apps$name[1], "\n")
+      app_path <- paste0(apps$name[1], "/", apps$id[1])
+    } else {
+      cat("Encontramos múltiplos aplicativos. Por favor, selecione qual você quer verificar:\n")
+      app_choice <- menu(apps$name, title="Qual aplicativo você quer inspecionar?")
+      if (app_choice > 0) {
+        app_path <- paste0(apps$name[app_choice], "/", apps$id[app_choice])
+      } else {
+        stop("Nenhum aplicativo selecionado. Encerrando o script.")
+      }
+    }
+    
+    cat("\n--- Verificando o aplicativo:", strsplit(app_path, "/")[[1]][1], "---\n")
+    
+    # --- PASSO 3: Baixar a lista de arquivos do aplicativo ---
+    tryCatch({
+      cat("Buscando a lista de arquivos no servidor... Isso pode levar um momento.\n")
+      
+      # A função `listBundleFiles` nos dá a lista de arquivos que foram enviados
+      bundle_files <- rsconnect::listBundleFiles(appDir = getwd()) # Usa o diretório atual como referência
+      
+      if (length(bundle_files$contents) > 0) {
+        cat("✅ Sucesso! Arquivos e pastas encontrados no pacote de deploy:\n\n")
+        
+        # Imprime a lista de arquivos de forma organizada
+        sorted_files <- sort(bundle_files$contents)
+        cat(paste("  - ", sorted_files, collapse = "\n"))
+        
+        # --- PASSO 4: Verificação de Arquivos Críticos ---
+        cat("\n\n--- Verificação Cruzada de Arquivos Essenciais ---\n")
+        
+        arquivos_criticos <- c(
+          ".Renviron",
+          "app.R",
+          "utils/preprocess_utils.R",
+          "utils/onepager_build.R",
+          "utils/db_utils.R",
+          "modules/mod_admin.R",
+          "modules/mod_escola.R",
+          "modules/mod_chat.R",
+          "modules/mod_auth.R",
+          "report/relatorio_escola.Rmd",
+          "data/processed/censo_local_sp_rj_mg.parquet",
+          "data/escolas_privadas_nomelista.rds",
+          "data/processed/escolas_enriquecidas.rds",
+          "data/enem_consolidados.RData"
+        )
+        
+        cat("Verificando se os arquivos essenciais foram incluídos no deploy:\n")
+        for (arquivo in arquivos_criticos) {
+          if (arquivo %in% sorted_files) {
+            cat(paste0("  [✓] ", arquivo, "\n"))
+          } else {
+            cat(paste0("  [✗] AVISO! Arquivo crítico não encontrado: ", arquivo, "\n"))
+          }
+        }
+        
+        cat("\n--- Verificação finalizada. ---\n")
+        
+      } else {
+        cat("❌ Nenhum arquivo encontrado no pacote. Isso é inesperado.\n")
+      }
+      
+    }, error = function(e) {
+      cat("\n❌ ERRO ao tentar buscar a lista de arquivos. Mensagem:", e$message, "\n")
+      cat("   Isso pode acontecer se o diretório atual não for a raiz do seu aplicativo Shiny.\n")
+      cat("   Certifique-se de que o 'Working Directory' do R está na pasta correta.\n")
+    })
+    
+    print(whitelist)
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    # ===================================================================
+    #   SCRIPT PARA LIMPEZA DA WHITELIST DE DEPLOY
+    # ===================================================================
+    
+    library(stringr)
+    library(dplyr)
+    
+    # 1. Sua whitelist atual completa
+    whitelist_antiga <- c(
+      "app.R", "renv.lock", ".Rprofile", ".Renviron", "config/database.sqlite", 
+      "modules/mod_admin.R", "modules/mod_auth.R", "modules/mod_chat.R", "modules/mod_escola.R", 
+      "utils/create_municipality_lookup.R", "utils/db_utils.R", "utils/global_reactives.R", 
+      "utils/golbal_reactives.R", "utils/IBGE_UTILS_CENSO.R", "utils/mapa_utils.R", 
+      "utils/onepager_build.R", "utils/onepage_build_novo.R", "utils/openai_report.R", 
+      "utils/openai_utils.R", "utils/otimiza_bases.R", "utils/pipe_line_censo_geo.R", 
+      "utils/preprocess_utils.R", "utils/script.R", "utils/testar_censo2022.R", 
+      "utils/test_data_connections.R", "www/logo_explora.png", 
+      "www/maps/mapa_35104991_20250809215337.html", "www/maps/mapa_35104991_20250809215337_files/fontawesome-4.7.0/bootstrap-theme.min.css", 
+      "www/maps/mapa_35104991_20250809215337_files/fontawesome-4.7.0/bootstrap.min.css", "www/maps/mapa_35104991_20250809215337_files/fontawesome-4.7.0/bootstrap.min.js", 
+      "www/maps/mapa_35104991_20250809215337_files/fontawesome-4.7.0/font-awesome.min.css", "www/maps/mapa_35104991_20250809215337_files/fontawesome-4.7.0/fonts/fontawesome-webfont.eot", 
+      "www/maps/mapa_35104991_20250809215337_files/fontawesome-4.7.0/fonts/fontawesome-webfont.svg", "www/maps/mapa_35104991_20250809215337_files/fontawesome-4.7.0/fonts/fontawesome-webfont.ttf", 
+      "www/maps/mapa_35104991_20250809215337_files/fontawesome-4.7.0/fonts/fontawesome-webfont.woff", "www/maps/mapa_35104991_20250809215337_files/fontawesome-4.7.0/fonts/FontAwesome.otf", 
+      "www/maps/mapa_35104991_20250809215337_files/fontawesome-4.7.0/fonts/glyphicons-halflings-regular.eot", "www/maps/mapa_35104991_20250809215337_files/fontawesome-4.7.0/fonts/glyphicons-halflings-regular.svg", 
+      "www/maps/mapa_35104991_20250809215337_files/fontawesome-4.7.0/fonts/glyphicons-halflings-regular.ttf", "www/maps/mapa_35104991_20250809215337_files/fontawesome-4.7.0/fonts/glyphicons-halflings-regular.woff", 
+      "www/maps/mapa_35104991_20250809215337_files/fontawesome-4.7.0/fonts/ionicons.eot", "www/maps/mapa_35104991_20250809215337_files/fontawesome-4.7.0/fonts/ionicons.svg", 
+      "www/maps/mapa_35104991_20250809215337_files/fontawesome-4.7.0/fonts/ionicons.ttf", "www/maps/mapa_35104991_20250809215337_files/fontawesome-4.7.0/fonts/ionicons.woff", 
+      "www/maps/mapa_35104991_20250809215337_files/fontawesome-4.7.0/images/markers-matte.png", "www/maps/mapa_35104991_20250809215337_files/fontawesome-4.7.0/images/markers-matte@2x.png", 
+      "www/maps/mapa_35104991_20250809215337_files/fontawesome-4.7.0/images/markers-plain.png", "www/maps/mapa_35104991_20250809215337_files/fontawesome-4.7.0/images/markers-shadow.png", 
+      "www/maps/mapa_35104991_20250809215337_files/fontawesome-4.7.0/images/markers-shadow@2x.png", "www/maps/mapa_35104991_20250809215337_files/fontawesome-4.7.0/images/markers-soft.png", 
+      "www/maps/mapa_35104991_20250809215337_files/fontawesome-4.7.0/images/markers-soft@2x.png", "www/maps/mapa_35104991_20250809215337_files/fontawesome-4.7.0/ionicons.min.css", 
+      "www/maps/mapa_35104991_20250809215337_files/fontawesome-4.7.0/leaflet.awesome-markers.css", "www/maps/mapa_35104991_20250809215337_files/fontawesome-4.7.0/leaflet.awesome-markers.js", 
+      "www/maps/mapa_35104991_20250809215337_files/fontawesome-4.7.0/leaflet.awesome-markers.min.js", "www/maps/mapa_35104991_20250809215337_files/htmltools-fill-0.5.8.1/fill.css", 
+      "www/maps/mapa_35104991_20250809215337_files/htmlwidgets-1.6.4/htmlwidgets.js", "www/maps/mapa_35104991_20250809215337_files/jquery-3.6.0/jquery-3.6.0.js", 
+      "www/maps/mapa_35104991_20250809215337_files/jquery-3.6.0/jquery-3.6.0.min.js", "www/maps/mapa_35104991_20250809215337_files/jquery-3.6.0/jquery-3.6.0.min.map", 
+      "www/maps/mapa_35104991_20250809215337_files/leaflet-1.3.1/images/layers-2x.png", "www/maps/mapa_35104991_20250809215337_files/leaflet-1.3.1/images/layers.png", 
+      "www/maps/mapa_35104991_20250809215337_files/leaflet-1.3.1/images/marker-icon-2x.png", "www/maps/mapa_35104991_20250809215337_files/leaflet-1.3.1/images/marker-icon.png", 
+      "www/maps/mapa_35104991_20250809215337_files/leaflet-1.3.1/images/marker-shadow.png", "www/maps/mapa_35104991_20250809215337_files/leaflet-1.3.1/leaflet.css", 
+      "www/maps/mapa_35104991_20250809215337_files/leaflet-1.3.1/leaflet.js", "www/maps/mapa_35104991_20250809215337_files/leaflet-awesomemarkers-2.0.3/bootstrap-theme.min.css", 
+      "www/maps/mapa_35104991_20250809215337_files/leaflet-awesomemarkers-2.0.3/bootstrap.min.css", "www/maps/mapa_35104991_20250809215337_files/leaflet-awesomemarkers-2.0.3/bootstrap.min.js", 
+      "www/maps/mapa_35104991_20250809215337_files/leaflet-awesomemarkers-2.0.3/font-awesome.min.css", "www/maps/mapa_35104991_20250809215337_files/leaflet-awesomemarkers-2.0.3/fonts/fontawesome-webfont.eot", 
+      "www/maps/mapa_35104991_20250809215337_files/leaflet-awesomemarkers-2.0.3/fonts/fontawesome-webfont.svg", "www/maps/mapa_35104991_20250809215337_files/leaflet-awesomemarkers-2.0.3/fonts/fontawesome-webfont.ttf", 
+      "www/maps/mapa_35104991_20250809215337_files/leaflet-awesomemarkers-2.0.3/fonts/fontawesome-webfont.woff", "www/maps/mapa_35104991_20250809215337_files/leaflet-awesomemarkers-2.0.3/fonts/FontAwesome.otf", 
+      "www/maps/mapa_35104991_20250809215337_files/leaflet-awesomemarkers-2.0.3/fonts/glyphicons-halflings-regular.eot", "www/maps/mapa_35104991_20250809215337_files/leaflet-awesomemarkers-2.0.3/fonts/glyphicons-halflings-regular.svg", 
+      "www/maps/mapa_35104991_20250809215337_files/leaflet-awesomemarkers-2.0.3/fonts/glyphicons-halflings-regular.ttf", "www/maps/mapa_35104991_20250809215337_files/leaflet-awesomemarkers-2.0.3/fonts/glyphicons-halflings-regular.woff", 
+      "www/maps/mapa_35104991_20250809215337_files/leaflet-awesomemarkers-2.0.3/fonts/ionicons.eot", "www/maps/mapa_35104991_20250809215337_files/leaflet-awesomemarkers-2.0.3/fonts/ionicons.svg", 
+      "www/maps/mapa_35104991_20250809215337_files/leaflet-awesomemarkers-2.0.3/fonts/ionicons.ttf", "www/maps/mapa_35104991_20250809215337_files/leaflet-awesomemarkers-2.0.3/fonts/ionicons.woff", 
+      "www/maps/mapa_35104991_20250809215337_files/leaflet-awesomemarkers-2.0.3/images/markers-matte.png", "www/maps/mapa_35104991_20250809215337_files/leaflet-awesomemarkers-2.0.3/images/markers-matte@2x.png", 
+      "www/maps/mapa_35104991_20250809215337_files/leaflet-awesomemarkers-2.0.3/images/markers-plain.png", "www/maps/mapa_35104991_20250809215337_files/leaflet-awesomemarkers-2.0.3/images/markers-shadow.png", 
+      "www/maps/mapa_35104991_20250809215337_files/leaflet-awesomemarkers-2.0.3/images/markers-shadow@2x.png", "www/maps/mapa_35104991_20250809215337_files/leaflet-awesomemarkers-2.0.3/images/markers-soft.png", 
+      "www/maps/mapa_35104991_20250809215337_files/leaflet-awesomemarkers-2.0.3/images/markers-soft@2x.png", "www/maps/mapa_35104991_20250809215337_files/leaflet-awesomemarkers-2.0.3/ionicons.min.css", 
+      "www/maps/mapa_35104991_20250809215337_files/leaflet-awesomemarkers-2.0.3/leaflet.awesome-markers.css", "www/maps/mapa_35104991_20250809215337_files/leaflet-awesomemarkers-2.0.3/leaflet.awesome-markers.js", 
+      "www/maps/mapa_35104991_20250809215337_files/leaflet-awesomemarkers-2.0.3/leaflet.awesome-markers.min.js", "www/maps/mapa_35104991_20250809215337_files/leaflet-binding-2.2.2/leaflet.js", 
+      "www/maps/mapa_35104991_20250809215337_files/leaflet-providers-2.0.0/leaflet-providers_2.0.0.js", "www/maps/mapa_35104991_20250809215337_files/leaflet-providers-plugin-2.2.2/leaflet-providers-plugin.js", 
+      "www/maps/mapa_35104991_20250809215337_files/leafletfix-1.0.0/leafletfix.css", "www/maps/mapa_35104991_20250809215337_files/proj4-2.6.2/proj4.min.js", 
+      "www/maps/mapa_35104991_20250809215337_files/Proj4Leaflet-1.0.1/proj4leaflet.js", "www/maps/mapa_35104991_20250809215337_files/rstudio_leaflet-1.3.1/images/1px.png", 
+      "www/maps/mapa_35104991_20250809215337_files/rstudio_leaflet-1.3.1/rstudio_leaflet.css", "www/maps/mapa_35104991_20250809220836.html", 
+      "www/maps/mapa_35104991_20250809220836_files/fontawesome-4.7.0/bootstrap-theme.min.css", "www/maps/mapa_35104991_20250809220836_files/fontawesome-4.7.0/bootstrap.min.css", 
+      "www/maps/mapa_35104991_20250809220836_files/fontawesome-4.7.0/bootstrap.min.js", "www/maps/mapa_35104991_20250809220836_files/fontawesome-4.7.0/font-awesome.min.css", 
+      "www/maps/mapa_35104991_20250809220836_files/fontawesome-4.7.0/fonts/fontawesome-webfont.eot", "www/maps/mapa_35104991_20250809220836_files/fontawesome-4.7.0/fonts/fontawesome-webfont.svg", 
+      "www/maps/mapa_35104991_20250809220836_files/fontawesome-4.7.0/fonts/fontawesome-webfont.ttf", "www/maps/mapa_35104991_20250809220836_files/fontawesome-4.7.0/fonts/fontawesome-webfont.woff", 
+      "www/maps/mapa_35104991_20250809220836_files/fontawesome-4.7.0/fonts/FontAwesome.otf", "www/maps/mapa_35104991_20250809220836_files/fontawesome-4.7.0/fonts/glyphicons-halflings-regular.eot", 
+      "www/maps/mapa_35104991_20250809220836_files/fontawesome-4.7.0/fonts/glyphicons-halflings-regular.svg", "www/maps/mapa_35104991_20250809220836_files/fontawesome-4.7.0/fonts/glyphicons-halflings-regular.ttf", 
+      "www/maps/mapa_35104991_20250809220836_files/fontawesome-4.7.0/fonts/glyphicons-halflings-regular.woff", "www/maps/mapa_35104991_20250809220836_files/fontawesome-4.7.0/fonts/ionicons.eot", 
+      "www/maps/mapa_35104991_20250809220836_files/fontawesome-4.7.0/fonts/ionicons.svg", "www/maps/mapa_35104991_20250809220836_files/fontawesome-4.7.0/fonts/ionicons.ttf", 
+      "www/maps/mapa_35104991_20250809220836_files/fontawesome-4.7.0/fonts/ionicons.woff", "www/maps/mapa_35104991_20250809220836_files/fontawesome-4.7.0/images/markers-matte.png", 
+      "www/maps/mapa_35104991_20250809220836_files/fontawesome-4.7.0/images/markers-matte@2x.png", "www/maps/mapa_35104991_20250809220836_files/fontawesome-4.7.0/images/markers-plain.png", 
+      "www/maps/mapa_35104991_20250809220836_files/fontawesome-4.7.0/images/markers-shadow.png", "www/maps/mapa_35104991_20250809220836_files/fontawesome-4.7.0/images/markers-shadow@2x.png", 
+      "www/maps/mapa_35104991_20250809220836_files/fontawesome-4.7.0/images/markers-soft.png", "www/maps/mapa_35104991_20250809220836_files/fontawesome-4.7.0/images/markers-soft@2x.png", 
+      "www/maps/mapa_35104991_20250809220836_files/fontawesome-4.7.0/ionicons.min.css", "www/maps/mapa_35104991_20250809220836_files/leaflet-awesomemarkers-2.0.3/leaflet.awesome-markers.css", 
+      "www/maps/mapa_35104991_20250809220836_files/leaflet-awesomemarkers-2.0.3/leaflet.awesome-markers.js", "www/maps/mapa_35104991_20250809220836_files/leaflet-awesomemarkers-2.0.3/leaflet.awesome-markers.min.js", 
+      "www/maps/mapa_35104991_20250809220836_files/leaflet-binding-2.2.2/leaflet.js", "www/maps/mapa_35104991_20250809220836_files/leafletfix-1.0.0/leafletfix.css", 
+      "www/maps/mapa_35104991_20250809220836_files/proj4-2.6.2/proj4.min.js", "www/maps/mapa_35104991_20250809220836_files/Proj4Leaflet-1.0.1/proj4leaflet.js", 
+      "www/maps/mapa_35104991_20250809220836_files/rstudio_leaflet-1.3.1/images/1px.png", "www/maps/mapa_35104991_20250809220836_files/rstudio_leaflet-1.3.1/rstudio_leaflet.css", 
+      "www/styles.css", "report/relatorio_escola.Rmd", "report/relatorio.css", 
+      "report/assets/logo_explora.png", "report/assets/logo_explora_preto_branco.png", 
+      "report/assets/logo_primeira_escolha.png", "report/assets/logo_rabbit.jpg", 
+      "report/assets/qr_demo.png", "data/escolas/35009758.rds", "data/escolas/35104991.rds", 
+      "data/escolas/35136931.rds", "data/escolas/35440528.rds", "data/escolas/35568036.rds", 
+      "data/escolas_privadas_nomelista.rds", "data/processed/escolas_enriquecidas.rds",
+      # Adicionando arquivos que faltaram na lista anterior
+      "data/enem_consolidados.RData",
+      "data/municipios_lookup.rds",
+      "data/processed/censo_local_sp_rj_mg.parquet"
+    )
+    
+    # 2. Define os padrões de arquivos para REMOVER do deploy
+    padroes_para_remover <- c(
+      # Scripts de desenvolvimento e teste na pasta utils/
+      "^utils/(create|global|golbal|IBGE|mapa|onepage_build_novo|openai_report|otimiza|pipe_line|script|test)",
+      
+      # Mapas HTML e suas dependências na pasta www/
+      "^www/maps/",
+      
+      # Arquivos .rds de escolas individuais (serão criados no servidor)
+      "^data/escolas/",
+      
+      # Assets e CSS não essenciais do relatório
+      "report/relatorio\\.css",
+      "report/assets/logo_explora_preto_branco\\.png"
+    )
+    
+    # 3. Cria um único padrão regex para a filtragem
+    regex_remover <- paste(padroes_para_remover, collapse = "|")
+    
+    # 4. Filtra a lista antiga para criar a nova
+    df_arquivos <- tibble(path = whitelist_antiga)
+    
+    df_filtrado <- df_arquivos %>%
+      filter(!str_detect(path, regex_remover))
+    
+    whitelist_final <- df_filtrado$path
+    arquivos_removidos <- setdiff(whitelist_antiga, whitelist_final)
+    
+    # 5. Apresenta os resultados de forma clara
+    cat("--- ANÁLISE DA WHITELIST PARA DEPLOY ---\n\n")
+    cat("Whitelist original continha", length(whitelist_antiga), "arquivos.\n")
+    cat("Whitelist otimizada contém", length(whitelist_final), "arquivos.\n\n")
+    
+    cat("=====================================================\n")
+    cat("ARQUIVOS REMOVIDOS (NÃO ESSENCIAIS PARA PRODUÇÃO):\n")
+    cat("=====================================================\n")
+    if(length(arquivos_removidos) > 0) {
+      cat(paste("-", arquivos_removidos, collapse = "\n"))
+    } else {
+      cat("Nenhum arquivo removido.")
+    }
+    
+    cat("\n\n=====================================================\n")
+    cat("WHITELIST FINAL E OTIMIZADA (USE ESTA PARA O DEPLOY):\n")
+    cat("=====================================================\n")
+    # Imprime a lista final de uma forma que pode ser copiada e colada
+    cat("whitelist_final <- c(\n")
+    cat(paste0("  \"", whitelist_final, "\"", collapse = ",\n"))
+    cat("\n)\n")
     

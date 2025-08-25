@@ -8,15 +8,17 @@ suppressPackageStartupMessages({
   library(jsonlite)
   library(dplyr)
   library(tidyr)
+  library(commonmark)
+  library(webshot)# Necessário para converter Markdown em HTML
 })
+
 # <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
-#      CORREÇÃO DEFINITIVA: Carrega o .Renviron
-#      Isso garante que a chave da API esteja disponível
-#      durante a renderização do R Markdown.
+#      CORREÇÃO DEFINITIVA PARA DEPLOY: Carrega o .Renviron
 # <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
 if (file.exists(here::here(".Renviron"))) {
   readRenviron(here::here(".Renviron"))
 }
+
 
 # --- Helpers Globais ---
 `%||%` <- function(a,b) if (!is.null(a)) a else b
@@ -271,73 +273,134 @@ find_logo_uri <- function(basenames, dir = here::here("report","assets")) {
 # =========================================================
 #      FUNÇÃO PRINCIPAL `build_onepager` (VERSÃO FINAL)
 # =========================================================
+.build_html_onepager <- function(rmd_path, params_list, out_html) {
+  rmarkdown::render(
+    rmd_path,
+    params = params_list,
+    output_file = out_html,
+    quiet = TRUE,
+    envir = new.env(parent = globalenv()),
+    output_options = list(self_contained = TRUE)  # << essencial p/ shiny
+  )
+  stopifnot(file.exists(out_html))
+  out_html
+}
+
+.html_to_pdf_webshot <- function(in_html, out_pdf, vwidth = 1240, vheight = 1754, zoom = 1, delay = 0.5) {
+  if (!requireNamespace("webshot", quietly = TRUE))
+    stop("Pacote 'webshot' não está instalado.")
+  # Garante PhantomJS no shinyapps.io
+  if (!isTRUE(webshot::is_phantomjs_installed())) {
+    try(webshot::install_phantomjs(), silent = TRUE)
+  }
+  webshot::webshot(
+    url     = paste0("file:///", normalizePath(in_html, winslash = "/")),
+    file    = out_pdf,
+    vwidth  = vwidth,   # ~A4 portrait em pixels (proporção)
+    vheight = vheight,
+    zoom    = zoom,
+    delay   = delay
+  )
+  if (!file.exists(out_pdf) || is.na(file.size(out_pdf)) || file.size(out_pdf) < 1024)
+    stop("Falha ao gerar PDF com webshot/PhantomJS.")
+  out_pdf
+}
+
+# Fallbacks opcionais (usados só se webshot falhar)
+.try_pagedown <- function(in_html, out_pdf, timeout = 120) {
+  if (!requireNamespace("pagedown", quietly = TRUE)) stop("pagedown indisponível.")
+  pagedown::chrome_print(input = in_html, output = out_pdf, timeout = timeout)
+  if (!file.exists(out_pdf) || file.size(out_pdf) < 1024) stop("chrome_print não gerou PDF.")
+  out_pdf
+}
+.try_chromote <- function(in_html, out_pdf, scale = 0.82) {
+  if (!requireNamespace("chromote", quietly = TRUE)) stop("chromote indisponível.")
+  b <- chromote::ChromoteSession$new()
+  on.exit(try(b$close(), silent = TRUE), add = TRUE)
+  b$Page$navigate(paste0("file:///", normalizePath(in_html, winslash = "/")))
+  b$Page$loadEventFired(wait_ = TRUE)
+  b$Emulation$setEmulatedMedia(media = "print")
+  pdf <- b$Page$printToPDF(
+    paperWidth  = 8.27, paperHeight = 11.69,
+    marginTop   = 0.39, marginBottom = 0.39,
+    marginLeft  = 0.39, marginRight  = 0.39,
+    printBackground = TRUE,
+    preferCSSPageSize = TRUE,
+    scale = scale
+  )
+  raw_pdf <- jsonlite::base64_dec(pdf$data)
+  con <- file(out_pdf, open = "wb"); on.exit(try(close(con), silent = TRUE), add = TRUE)
+  writeBin(raw_pdf, con)
+  if (!file.exists(out_pdf) || file.size(out_pdf) < 1024) stop("chromote não gerou PDF.")
+  out_pdf
+}
+
+# =========================
+# VERSÃO FINAL: build_onepager()
+# =========================
 build_onepager <- function(dados, out_pdf) {
   stopifnot(is.list(dados), length(out_pdf) == 1)
   
-  rmd_path <- here::here("report", "relatorio_escola.Rmd")
-  if (!file.exists(rmd_path)) stop("Arquivo Rmd do relatório não encontrado em:", rmd_path)
+  # --- Caminho do Rmd ---
+  rmd_path <- file.path("report", "relatorio_escola.Rmd")
+  if (!file.exists(rmd_path)) stop("Arquivo Rmd não encontrado em: ", rmd_path)
   
-  # 1. Processa a tabela do ENEM (fonte da verdade)
-  enem_tab <- tryCatch(enem_table_areas(dados), error = function(e) data.frame())
+  # --- Montagem dos dados (usa suas funções novas) ---
+  enem_tab  <- tryCatch(enem_table_areas(dados), error = function(e) data.frame())
+  kpi_mat   <- tryCatch(kpi_var_matriculas_total(dados), error = function(e) "—")
+  mat_tab   <- tryCatch(table_matriculas(dados), error = function(e) data.frame())
+  emd       <- tryCatch(enem_media_delta(enem_tab), error = function(e) list(media = NA, delta = NA))
+  conc_line <- tryCatch(concorrentes_line(dados), error = function(e) "—")
+  texto_ai  <- tryCatch(generate_exec_analysis_rich(dados, enem_tab), error = function(e) "<p><em>Sem análise automática.</em></p>")
   
-  # 2. Calcula KPIs e prepara outros dados a partir das fontes corretas
-  kpi_mat_tot <- tryCatch(kpi_var_matriculas_total(dados), error = function(e) "—")
-  mat_tab     <- tryCatch(table_matriculas(dados), error = function(e) data.frame())
-  emd         <- tryCatch(enem_media_delta(enem_tab), error = function(e) list(media=NA, delta=NA)) # Usa a tabela correta
-  conc_line   <- tryCatch(concorrentes_line(dados), error = function(e) "—")
-  
-  # 3. Gera texto da IA, passando os dados corretos
-  texto_ai    <- tryCatch(generate_exec_analysis_rich(dados, enem_tab), error = function(e) {
-    warning("Falha na IA, usando fallback manual. Erro: ", e$message)
-    "<p><em>Análise executiva não pôde ser gerada devido a um erro.</em></p>"
-  })
-  
-  # Monta a lista de parâmetros final
   params_full <- list(
     meta = list(
-      nome_escola = dados$nome_escola %||% "—",
-      municipio = dados$nome_municipio %||% "—",
-      data_ref = format(Sys.Date(), "%d/%m/%Y"),
+      nome_escola      = dados$nome_escola %||% "—",
+      municipio        = dados$nome_municipio %||% "—",
+      data_ref         = format(Sys.Date(), "%d/%m/%Y"),
       logo_explora_uri = find_logo_uri("logo_explora"),
-      logo_pe_uri = find_logo_uri("logo_pe"),
-      logo_rabbit_uri = find_logo_uri("logo_rabbit"),
-      qr_uri = find_logo_uri("qr_demo"),
-      concorrentes_line = conc_line
-      # ... pode adicionar cores aqui se quiser
+      logo_pe_uri      = find_logo_uri("logo_pe"),
+      logo_rabbit_uri  = find_logo_uri("logo_rabbit"),
+      qr_uri           = find_logo_uri("qr_demo"),
+      concorrentes_line= conc_line
     ),
     kpis = list(
-      matriculas_var_total = kpi_mat_tot,
-      enem_media = fmt_num1(emd$media),
-      enem_delta_conc = if(is.finite(emd$delta)) sprintf("%+.1f", emd$delta) else ""
+      matriculas_var_total = kpi_mat,
+      enem_media      = if (is.finite(emd$media)) format(round(emd$media, 1), nsmall = 1, decimal.mark = ",") else "—",
+      enem_delta_conc = if (is.finite(emd$delta)) sprintf("%+.1f", emd$delta) else ""
     ),
     tabelas = list(
       matriculas = mat_tab,
-      enem_areas = enem_tab 
+      enem_areas = enem_tab
     ),
     analise = list(
-      texto = texto_ai
+      texto = texto_ai  # já vem em HTML “limpo” do generate_exec_analysis_rich()
     )
   )
   
-  # Renderiza o relatório
-  fm <- rmarkdown::yaml_front_matter(rmd_path)
-  declared <- names(fm$params %||% list())
-  params_filtered <- params_full[intersect(names(params_full), declared)]
+  # --- Render para HTML self-contained (chave p/ shiny) ---
+  out_html <- file.path(tempdir(), "relatorio_escola.html")
+  .build_html_onepager(rmd_path, params_full, out_html)
   
-  out_html <- file.path(tempdir(), "relatorio_temp.html")
-  rmarkdown::render(
-    rmd_path, params = params_filtered, output_file = out_html,
-    quiet = TRUE, envir = new.env(parent = globalenv())
-  )
-  
+  # --- HTML -> PDF (prioriza webshot/PhantomJS no shinyapps) ---
   ok <- FALSE
-  if (requireNamespace("pagedown", quietly = TRUE)) {
+  try({
+    .html_to_pdf_webshot(out_html, out_pdf, vwidth = 1240, vheight = 1754, zoom = 1, delay = 0.5)
+    ok <- TRUE
+  }, silent = TRUE)
+  
+  if (!ok) {
+    # fallback 1: pagedown (se por acaso houver Chrome/Chromium)
     try({
-      pagedown::chrome_print(input = out_html, output = out_pdf, timeout = 120)
-      ok <- file.exists(out_pdf) && file.size(out_pdf) > 1024
+      .try_pagedown(out_html, out_pdf, timeout = 180)
+      ok <- TRUE
     }, silent = TRUE)
   }
+  if (!ok) {
+    # fallback 2: chromote (último recurso)
+    .try_chromote(out_html, out_pdf, scale = 0.82)
+    ok <- TRUE
+  }
   
-  if (!ok) stop("Não foi possível gerar PDF. Verifique o Chrome e o pacote 'pagedown'.")
   invisible(out_pdf)
 }

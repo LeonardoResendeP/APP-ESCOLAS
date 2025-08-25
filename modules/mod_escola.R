@@ -757,26 +757,25 @@ mod_escola_server <- function(id, user, codinep) {
     output$dl_onepager <- downloadHandler(
       filename = function() {
         d <- dados_escola_reativo()
-        paste0("Relatorio_", d$id_escola, "_", format(Sys.Date(), "%Y-%m-%d"), ".pdf")
+        paste0("Relatorio_Explora_", d$id_escola, "_", format(Sys.Date(), "%Y-%m-%d"), ".pdf")
       },
       content = function(file) {
-        # captura dados
-        d <- dados_escola_reativo()
-        shiny::validate(shiny::need(!is.null(d), "Dados não carregados."))
+        # Garante que o script do builder esteja disponível
+        source(here::here("utils", "onepager_build.R"), local = TRUE)
         
-        # carrega o builder
-        load_onepager_builder()
+        id <- showNotification("Gerando relatório em PDF, por favor aguarde...", duration = NULL, closeButton = FALSE)
+        on.exit(removeNotification(id), add = TRUE)
         
-        # gera PDF diretamente no 'file' fornecido pelo Shiny
+        dados_para_relatorio <- dados_escola_reativo()
+        shiny::validate(shiny::need(!is.null(dados_para_relatorio), "Dados da escola ainda não foram carregados."))
+        
+        # Chama a função principal do builder, que faz todo o trabalho
         tryCatch({
-          build_onepager(dados = d, out_pdf = file)
-          if (!file.exists(file)) stop("Falha ao criar o PDF.")
+          build_onepager(dados = dados_para_relatorio, out_pdf = file)
         }, error = function(e) {
-          showNotification(
-            paste("Erro ao gerar o relatório PDF:", conditionMessage(e)),
-            type = "error", duration = 8
-          )
-          stop(e)
+          showNotification(paste("Erro ao gerar PDF:", e$message), type = "error", duration = 10)
+          # Cria um arquivo vazio para evitar que o navegador fique esperando
+          file.create(file)
         })
       }
     )

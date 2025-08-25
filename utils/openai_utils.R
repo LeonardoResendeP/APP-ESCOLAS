@@ -37,7 +37,7 @@ get_openai_analysis <- function(
       list(role = "user", content = prompt_text)
     ),
     temperature = 0.3,
-    max_tokens  = 1000
+    max_tokens  = 2000
   )
   
   resp <- httr::RETRY(
