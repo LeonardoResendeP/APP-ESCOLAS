@@ -185,4 +185,3 @@ get_school_name_from_db <- function(codinep) {
   })
 }
 # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> FIM DAS NOVAS FUNÇÕES >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
-

@@ -76,7 +76,7 @@ mod_admin_server <- function(id) {
   moduleServer(id, function(input, output, session) {
     ns <- session$ns
     
-    source("utils/preprocess_utils.R", local = TRUE)
+    
     # <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<< CORREÇÃO APLICADA AQUI <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
     # Esta linha estava faltando. Ela carrega todas as funções do seu arquivo
     # db_utils.R, incluindo save_escola_to_db, corrigindo o erro.

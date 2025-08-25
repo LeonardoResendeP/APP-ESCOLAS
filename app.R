@@ -11,7 +11,7 @@ if (!nzchar(Sys.getenv("OPENAI_API_KEY"))) {
 # Carrega utilitários
 source("utils/db_utils.R")
 source("utils/onepager_build.R")
-
+source("utils/preprocess_utils.R")
 # Carrega os módulos da aplicação
 source("modules/mod_auth.R")
 source("modules/mod_admin.R")

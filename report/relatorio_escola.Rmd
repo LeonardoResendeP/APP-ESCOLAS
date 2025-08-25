@@ -38,13 +38,16 @@ params:
 
 ```{r css_block, echo=FALSE, results='asis'}
 css <- "
-@page { size: A4; margin: 10mm; }
+@page { 
+  size: A4; 
+  margin: 6mm;  /* Reduzido de 10mm para 6mm */
+}
 * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 
 /* ocupar largura total (evita 'comprimido à esquerda') */
 .main-container { max-width: 100% !important; padding-left: 0; padding-right: 0; }
 
-body { font-family: -apple-system, Segoe UI, Roboto, Arial, sans-serif; color: #111827; font-size: 11.5px; }
+body { font-family: -apple-system, Segoe UI, Roboto, Arial, sans-serif; color: #111827; font-size: 10.5px;line-height: 1.2; }
 h1 { margin: 0 0 2px 0; color: #111827; }
 h3 { margin: 6px 0 4px; color: #111827; }
 small { color: #6b7280; }
@@ -56,14 +59,29 @@ hr { border: 0; border-top: 2px solid #147AD6; margin: 6px 0 6px; }
   grid-template-columns: 1fr 140px;
   gap: 8px;
   align-items: center;
-  margin-bottom: 6px;
+  margin-bottom: 4px;
+}
+.subtitle {
+  font-size: 14px;
+  color: #4b5563; /* Um cinza-azulado suave, consistente com a classe .sub existente */
+  font-weight: normal;
+  margin-top: 2px;
+  margin-bottom: 2px;
+  line-height: 1.4;
+  padding-bottom: 4px;
 }
 .logo-explora { max-width: 120px; height: auto; display: block; margin-left: auto; }
 .sub { color: #4b5563; }
-
+/* Nova classe para layout de duas colunas */
+.two-column-layout {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  align-items: start;
+}
 /* cartões KPI */
 .kpi-wrap { display:flex; gap:8px; }
-.kpi { flex:1 1 0; border:1px solid #E5E7EB; border-radius:10px; padding:8px; }
+.kpi { flex:1 1 0; border:1px solid #E5E7EB; border-radius:10px; padding:6px; }
 .kpi .title { font-size:10px; color:#6b7280; text-transform:uppercase; letter-spacing:.04em; }
 .kpi .value { font-size:18px; font-weight:800; color:#111827; }
 .kpi .delta { font-size:11px; color:#6b7280; }
@@ -83,9 +101,9 @@ hr { border: 0; border-top: 2px solid #147AD6; margin: 6px 0 6px; }
 .conc-card { 
   border:1px solid `r COL_LINE`; 
   border-radius:10px; 
-  padding:8px; 
+  padding:6px; 
   background:#FFFFFF; 
-  margin-top:8px; 
+  margin-top:6px; 
 }
 /**** Concorrentes + QR ****/
 .conc-grid {
@@ -94,6 +112,18 @@ hr { border: 0; border-top: 2px solid #147AD6; margin: 6px 0 6px; }
   gap: 10px;
   align-items: start;
   margin-top: 6px;
+}
+/* Tabelas mais compactas */
+.kable-table {
+  font-size: 10px !important;
+}
+
+.kable-table th, .kable-table td {
+  padding: 3px 6px !important;
+}
+.card.ai p { 
+  margin: 2px 0;      /* Reduzido de 4px */
+  line-height: 1.2;   /* Reduzido de 1.28 */
 }
 .conc-card .conc-desc { margin-bottom: 4px; }
 .conc-list { margin: 6px 0 0; padding-left: 18px; }
@@ -174,8 +204,9 @@ logo_tag <- {
 # Constrói o HTML usando funções do htmltools
 header_div <- div(class = "header",
   div(class = "h-left",
-    h1("Relatório Executivo ",
-      tags$small(style = paste0("color:", params$meta$col_prim %||% "#147AD6"), "• Explora")
+    h1("Demonstrativo Plataforma Explora"
+    ),
+    div(class = "subtitle",h4("Pesquisas, métricas e tendências educacionais")
     ),
     div(class = "sub",
       tags$strong("Escola:"), (params$meta$nome_escola %||% "—"), HTML("&nbsp;•&nbsp;"),
@@ -203,16 +234,16 @@ library(htmltools)
 # Cria os elementos HTML usando funções do R
 kpi_div <- div(class = "kpi-wrap",
   div(class = "kpi",
-    div(class = "title", "Matrículas 23→24 (var%%)"),
+    div(class = "title", "Matrículas 2023→2024 (Variação %)"),
     div(class = "value", params$kpis$matriculas_var_total %||% "—"),
     div(class = "delta", tags$small("Base: Infantil + Fundamental + Médio"))
   ),
   div(class = "kpi",
-    div(class = "title", "ENEM (média geral)"),
+    div(class = "title", "Média ENEM (4 Áreas do conhecimento)"),
     div(class = "value", params$kpis$enem_media %||% "—"),
     div(class = "delta",
       if (!is.null(params$kpis$enem_delta_conc) && nzchar(params$kpis$enem_delta_conc)) {
-        tags$small(sprintf("Δ vs conc.: %s", params$kpis$enem_delta_conc))
+        tags$small(sprintf("Variação vs concorrentes mais proximos: %s", params$kpis$enem_delta_conc))
       } else {
         ""
       }
@@ -264,7 +295,7 @@ left_col <- div(class = "conc-card",
   ),
   if (!is.null(lis_tag)) lis_tag else div(class="conc-note", tags$small("Nenhum concorrente selecionado.")),
   div(class = "conc-note", style="margin-top:6px;",
-      tags$small("Você pode editar os concorrentes no app.")
+      tags$small("Você pode personalizar os concorrentes na plataforma, escaneia o QR ao lado para desbloquear todas as funcionalidades.")
   )
 )
 
@@ -286,13 +317,13 @@ div(class = "conc-grid",
 )
 ```
 
-### Matrículas por segmento (23→24)
+### Matrículas por segmento (2023→2024)
 
 ```{r}
 df <- params$tabelas$matriculas
 if (is.data.frame(df) && nrow(df) > 0) {
   # garante nomes
-  colnames(df) <- c("Segmento","2023","2024","Var% Esc.","Var% Conc.","Var% Mun.")
+  colnames(df) <- c("Segmento","2023","2024","Variação Escola.","Variação Concorrentes.","Variação Municipio.")
   df$`2023` <- fmt_int(df$`2023`); df$`2024` <- fmt_int(df$`2024`)
   
   df |>
@@ -300,7 +331,7 @@ if (is.data.frame(df) && nrow(df) > 0) {
     kableExtra::kable_classic(full_width = TRUE, html_font = "Segoe UI") |>
     kableExtra::kable_styling(bootstrap_options = c("condensed"), full_width = TRUE) |>
     kableExtra::row_spec(0, extra_css = sprintf("background:#F7FAFF;color:%s;", COL_TEXT)) |>
-    kableExtra::add_header_above(c(" " = 1, "Valores" = 2, "Variações (%%)" = 3))
+    kableExtra::add_header_above(c(" " = 1, "Quantidade por ano:" = 2, "Variações (%%)" = 3))
 } else {
   cat("*Sem dados de matrículas por segmento.*")
 }

@@ -2,218 +2,118 @@
 library(plotly)
 library(DT)
 library(htmlwidgets)
+library(shinyjs)
+library(dplyr)
+library(tidyr)
+library(stringr)
 
+# ===================================================================
+#      MOD_ESCOLA_UI (VERSÃO FINAL)
+# ===================================================================
 mod_escola_ui <- function(id) {
   ns <- NS(id)
-  
-  tagList(# No UI, adicione este código no tagList principal
-    tags$script(HTML("
-$(document).on('shiny:connected', function() {
-  // Melhora a aparência do Selectize
-  $('.selectize-input input').attr('placeholder', 'Digite para buscar escolas...');
-  
-  // Ajusta o dropdown para ficar acima se não couber embaixo
-  $(document).on('click', '.selectize-control', function() {
-    var $dropdown = $(this).find('.selectize-dropdown');
-    var windowHeight = $(window).height();
-    var dropdownHeight = $dropdown.outerHeight();
-    var inputOffset = $(this).offset().top;
-    var inputHeight = $(this).outerHeight();
-    
-    if (inputOffset + inputHeight + dropdownHeight > windowHeight - 50) {
-      $dropdown.addClass('dropdown-up');
-    } else {
-      $dropdown.removeClass('dropdown-up');
-    }
-  });
-});
-")),
-    shinyjs::useShinyjs(),
-    
+  tagList(
+    useShinyjs(),
     navbarPage(
       title = NULL,
-      
-      # --- Aba Visão Geral ---
       tabPanel("Visão Geral", 
-               fluidRow(
-                 column(12,
-                        h3("Resumo de Matrículas (Variação 2023 vs 2024)"),
-                        p("Comparativo do desempenho da sua escola em relação aos concorrentes selecionados e ao mercado total do seu município.")
-                 )
-               ),
+               fluidRow(column(12, h3("Resumo de Matrículas (Variação 2023 vs 2024)"), p("Comparativo do desempenho da sua escola em relação aos concorrentes selecionados e ao mercado total do seu município."))),
                br(),
                fluidRow(
                  column(4, h4(icon("school"), "Sua Escola"), hr(), uiOutput(ns("kpis_escola"))),
                  column(4, h4(icon("users"), "Média dos Concorrentes"), hr(), uiOutput(ns("kpis_concorrentes"))),
                  column(4, h4(icon("chart-pie"), "Mercado (Município)"), hr(), uiOutput(ns("kpis_mercado")))
                ),
-               # Botão de download na Visão Geral
-               div(class = "benchmark-download text-center",
-                   style = "margin: 2rem 0;",
-                   downloadButton(ns("dl_onepager"), "📄 Baixar Relatório Completo (PDF)", 
-                                  class = "btn-success btn-lg",
-                                  style = "font-size: 1.1rem; padding: 12px 24px;")
-               )
+               div(class = "benchmark-download text-center", style = "margin: 2rem 0;",
+                   downloadButton(ns("dl_onepager"), "📄 Baixar Relatório Completo (PDF)", class = "btn-success btn-lg", style = "font-size: 1.1rem; padding: 12px 24px;"))
       ),
-      
-      # --- Aba Benchmark Concorrentes ---
       tabPanel("Benchmark Concorrentes", 
                div(class = "benchmark-container",
-
-                   
-                   
-                   # Card de Análise Detalhada
                    div(class = "benchmark-card",
-                       div(class = "benchmark-card-title",
-                           icon("chart-bar", style = "color: var(--primary);"),
-                           "Análise Detalhada por Concorrente"
-                       ),
+                       div(class = "benchmark-card-title", icon("chart-bar", style = "color: var(--primary);"), "Análise Detalhada por Concorrente"),
                        p("Comparativo detalhado das métricas de matrícula entre sua escola e os concorrentes selecionados. Os dados mostram a variação 2023 vs 2024."),
-                       
                        uiOutput(ns("kpis_concorrentes_detalhados"))
                    ),
                    div(class = "benchmark-card",
-                       div(class = "benchmark-card-title",
-                           icon("users", style = "color: var(--primary);"),
-                           "Seleção de Concorrentes"
-                       ),
-                       p("Selecione até 5 escolas concorrentes para análise comparativa detalhada. A seleção personalizada permite focar nos competidores mais relevantes para sua estratégia."),
-                       
+                       div(class = "benchmark-card-title", icon("users", style = "color: var(--primary);"), "Seleção de Concorrentes"),
+                       p("Selecione até 5 escolas concorrentes do seu município para análise comparativa detalhada."),
                        div(class = "selectize-container",
                            selectizeInput(ns("selecao_concorrentes"), 
-                                          label = NULL,
-                                          choices = NULL,
-                                          multiple = TRUE,
-                                          width = "100%",
+                                          label = NULL, choices = NULL, multiple = TRUE, width = "100%",
                                           options = list(
-                                            maxItems = 5, 
-                                            placeholder = 'Digite o nome da escola...',
-                                            dropdownParent = 'body',
-                                            highlight = TRUE,
+                                            maxItems = 5, placeholder = 'Digite para buscar na base de escolas...',
+                                            valueField = 'value', labelField = 'label', searchField = 'label',
                                             render = I("{
-                                        item: function(item, escape) {
-                                          return '<div class=\"item\" style=\"padding: 8px; border-bottom: 1px solid #f0f0f0;\">' + escape(item.value) + '</div>';
-                                        },
-                                        option: function(item, escape) {
-                                          return '<div style=\"padding: 8px; border-bottom: 1px solid #f0f0f0;\">' + escape(item.value) + '</div>';
-                                        }
-                                      }")
+                                              option: function(item, escape) {
+                                                return '<div style=\"padding: 8px; border-bottom: 1px solid #f0f0f0;\">' +
+                                                         '<strong>' + escape(item.label.split(' - ')[0]) + '</strong>' +
+                                                         '<br><small style=\"color: #888;\">' + escape(item.label.split(' - ').slice(1).join(' - ')) + '</small>' +
+                                                       '</div>';
+                                              },
+                                              item: function(item, escape) { return '<div>' + escape(item.label) + '</div>'; }
+                                            }")
                                           ))
                        ),
-                       
                        div(class = "benchmark-actions",
-                           actionButton(ns("btn_atualizar_analise"), 
-                                        label = tagList(icon("sync"), "Atualizar Análise"), 
-                                        class = "btn-primary btn-icon"),
-                           actionButton(ns("btn_restaurar_padrao"), 
-                                        label = tagList(icon("undo"), "Restaurar Padrão"), 
-                                        class = "btn-secondary btn-icon")
+                           actionButton(ns("btn_atualizar_analise"), label = tagList(icon("sync"), "Atualizar Análise"), class = "btn-primary btn-icon"),
+                           actionButton(ns("btn_restaurar_padrao"), label = tagList(icon("undo"), "Restaurar Padrão"), class = "btn-secondary btn-icon")
                        )
                    )
                )
       ),
-      
-      # --- Aba Análise de Infraestrutura ---
       tabPanel("Análise de Infraestrutura",
-               fluidRow(
-                 column(12,
-                        h3("Comparativo de Infraestrutura (Censo 2024)"),
-                        p("Análise comparativa dos principais indicadores de infraestrutura da sua escola em relação aos concorrentes selecionados e à média do município.")
-                 )
-               ),
+               fluidRow(column(12, h3("Comparativo de Infraestrutura (Censo 2024)"), p("Análise comparativa dos principais indicadores de infraestrutura da sua escola em relação aos concorrentes selecionados e à média do município."))),
                hr(),
                fluidRow(
-                 column(12,
-                        h4("Análise Detalhada"),
-                        tabsetPanel(
-                          type = "tabs",
-                          tabPanel("Resumo Comparativo", 
-                                   br(),
-                                   uiOutput(ns("cards_infra_detalhada"))),
-                          tabPanel("Detalhe por Concorrente", 
-                                   br(),
-                                   uiOutput(ns("tabela_infra_detalhada_ui")))
+                 column(12, h4("Análise Detalhada"),
+                        tabsetPanel(type = "tabs",
+                                    tabPanel("Resumo Comparativo", br(), uiOutput(ns("cards_infra_detalhada"))),
+                                    tabPanel("Detalhe por Concorrente", br(), uiOutput(ns("tabela_infra_detalhada_ui")))
                         )
                  )
                )
       ),
-      
-      # --- Aba Desempenho Acadêmico com Sub-abas ---
       tabPanel("Desempenho Acadêmico",
                div(class = "academic-performance",
-                   div(class = "performance-card",
-                       h3(class = "academic-section-title", "Análise de Desempenho - ENEM 2024"),
-                       p("Comparativo das médias do ENEM por área de conhecimento e detalhamento das competências da redação.")
-                   ),
-                   
+                   div(class = "performance-card", h3(class = "academic-section-title", "Análise de Desempenho - ENEM 2024"), p("Comparativo das médias do ENEM por área de conhecimento e detalhamento das competências da redação.")),
                    tabsetPanel(
                      type = "tabs",
-                     
-                     tabPanel("Visão Consolidada",
-                              br(),
-                              div(class = "performance-card",
-                                  h4("Comparativo de Médias por Área"),
-                                  uiOutput(ns("ui_desempenho_areas_consolidado"))
+                     tabPanel("Visão Consolidada", br(),
+                              div(class = "performance-card", h4("Comparativo de Médias por Área"),
+                                  fluidRow(column(7, plotly::plotlyOutput(ns("plot_enem_areas_consolidado"))), column(5, DT::dataTableOutput(ns("tabela_enem_areas_consolidado"))))
                               ),
-                              
-                              div(class = "performance-card",
-                                  h4("Detalhamento da Nota de Redação"),
-                                  uiOutput(ns("ui_desempenho_redacao_consolidado"))
+                              div(class = "performance-card", h4("Detalhamento da Nota de Redação"),
+                                  fluidRow(column(7, plotly::plotlyOutput(ns("plot_enem_redacao_consolidado"))), column(5, DT::dataTableOutput(ns("tabela_enem_redacao_consolidado"))))
                               )
                      ),
-                     
-                     tabPanel("Detalhe por Concorrente",
-                              br(),
-                              div(class = "performance-card",
-                                  h4("Comparativo de Médias por Área"),
-                                  uiOutput(ns("ui_desempenho_areas_detalhado"))
+                     tabPanel("Detalhe por Concorrente", br(),
+                              div(class = "performance-card", h4("Comparativo de Médias por Área"),
+                                  fluidRow(column(7, plotly::plotlyOutput(ns("plot_enem_areas_detalhado"))), column(5, DT::dataTableOutput(ns("tabela_enem_areas_detalhado"))))
                               ),
-                              
-                              div(class = "performance-card",
-                                  h4("Detalhamento da Nota de Redação"),
-                                  uiOutput(ns("ui_desempenho_redacao_detalhado"))
+                              div(class = "performance-card", h4("Detalhamento da Nota de Redação"),
+                                  fluidRow(column(7, plotly::plotlyOutput(ns("plot_enem_redacao_detalhado"))), column(5, DT::dataTableOutput(ns("tabela_enem_redacao_detalhado"))))
                               )
                      )
                    )
                )
       ),
-      
-      tabPanel("Chat com IA",
-               icon = icon("robot"),
-               mod_chat_ui(ns("chat_ia"))
-      )
+      tabPanel("Chat com IA", icon = icon("robot"), mod_chat_ui(ns("chat_ia")))
     )
   )
 }
 
+# ===================================================================
+#      MOD_ESCOLA_SERVER (VERSÃO FINAL E DEFINITIVA)
+# ===================================================================
 mod_escola_server <- function(id, user, codinep) {
   moduleServer(id, function(input, output, session) {
+    ns <- session$ns
     
-    # Carregar utilitários
-    source("utils/preprocess_utils.R", local = TRUE)
     source("utils/db_utils.R", local = TRUE)
     
     dados_escola_reativo <- reactiveVal(NULL)
     dados_escola_padrao <- reactiveVal(NULL)
     dados_concorrentes_individuais <- reactiveVal(NULL)
-    
-    # Observar mudanças na seleção de concorrentes
-    observeEvent(input$selecao_concorrentes, {
-      req(input$selecao_concorrentes, length(input$selecao_concorrentes) > 0)
-      
-      showNotification("Carregando dados individuais dos concorrentes...")
-      
-      tryCatch({
-        dados_individuais <- obter_dados_individuais_concorrentes(
-          codinep, 
-          input$selecao_concorrentes,
-          dados_escola_reativo()$id_municipio
-        )
-        dados_concorrentes_individuais(dados_individuais)
-      }, error = function(e) {
-        showNotification(paste("Erro ao carregar dados individuais:", e$message), type = "error")
-      })
-    })
     
     observe({
       req(codinep)
@@ -221,190 +121,97 @@ mod_escola_server <- function(id, user, codinep) {
       if (file.exists(caminho_arquivo)) {
         dados_carregados <- readRDS(caminho_arquivo)
         dados_escola_reativo(dados_carregados)
-        
+        if ("dados_concorrentes_individualizados" %in% names(dados_carregados)) {
+          dados_concorrentes_individuais(dados_carregados$dados_concorrentes_individualizados)
+        }
         if (is.null(dados_escola_padrao())) {
           dados_escola_padrao(dados_carregados)
         }
       }
     })
-    # Função para obter nome do concorrente pelo ID
+    
     get_nome_concorrente <- function(id_conc) {
       dados <- dados_escola_reativo()
+      # Verifica na lista de concorrentes atual, que agora tem a coluna correta
       if (!is.null(dados$lista_concorrentes)) {
-        conc <- dados$lista_concorrentes %>%
-          filter(id_escola == id_conc) %>%
-          pull(nome_escola)
-        
-        if (length(conc) > 0 && !is.na(conc)) {
-          return(conc)
+        df_conc <- as.data.frame(dados$lista_concorrentes) # Converte de sf para df
+        if ("nome_escola" %in% names(df_conc)) {
+          nome <- df_conc %>% filter(id_escola == id_conc) %>% pull(nome_escola)
+          if (length(nome) > 0) return(nome)
         }
       }
-      
-      # Fallback: buscar da base completa
+      # Fallback para a base de dados completa
       tryCatch({
-        nomes_df <- readRDS("data/escolas_privadas_nomelista.rds")
-        nome <- nomes_df %>%
+        readRDS("data/escolas_privadas_nomelista.rds") %>%
           filter(CO_ENTIDADE == id_conc) %>%
-          pull(NO_ENTIDADE)
-        
-        if (length(nome) > 0) return(nome)
-        return(paste("Concorrente", id_conc))
-      }, error = function(e) {
-        return(paste("Concorrente", id_conc))
-      })
+          pull(NO_ENTIDADE) %>%
+          .[1] %||% paste("Concorrente", id_conc)
+      }, error = function(e) paste("Concorrente", id_conc))
     }
-    mod_chat_server("chat_ia", dados_escola = dados_escola_reativo)
     
-    output$nome_escola_titulo <- renderText({
-      dados <- dados_escola_reativo()
-      nm <- if (!is.null(dados)) (dados$nome_escola %||% "") else ""
-      if (!nzchar(nm)) nm <- "Sua Escola"
-      nm
-    })
+    mod_chat_server("chat_ia", dados_escola = dados_escola_reativo)
     
     concorrentes_disponiveis <- reactive({
       dados <- dados_escola_reativo(); req(dados)
-      nomes_all <- readRDS("data/escolas_privadas_nomelista.rds")
-      escolas_muni <- nomes_all %>%
-        dplyr::filter(
-          .data[[intersect(c("nome_municipio","NM_MUNICIPIO","municipio"), names(.))[1]]] == dados$nome_municipio,
-          CO_ENTIDADE != codinep
-        ) %>%
-        dplyr::mutate(
-          display_name = paste0(NO_ENTIDADE, " - ", dados$nome_municipio, " (", CO_ENTIDADE, ")")
-        ) %>%
-        dplyr::select(CO_ENTIDADE, display_name) %>%
-        dplyr::distinct()
-      escolas_muni
+      readRDS("data/escolas_privadas_nomelista.rds") %>%
+        filter(nome_municipio == dados$nome_municipio, CO_ENTIDADE != codinep) %>%
+        mutate(display_name = paste0(NO_ENTIDADE, " - ", nome_municipio, " (", CO_ENTIDADE, ")")) %>%
+        { setNames(.$CO_ENTIDADE, .$display_name) }
     })
     
+    # LÓGICA DE BUSCA DO MOD_ADMIN APLICADA AQUI
     observe({
-      df <- concorrentes_disponiveis()
-      req(nrow(df) > 0)
+      req(dados_escola_reativo())
+      opcoes_completas <- concorrentes_disponiveis()
+      selecionados_atuais <- dados_escola_reativo()$lista_concorrentes$id_escola
       
-      # A abordagem original que funcionava
-      choices <- df$display_name
-      names(choices) <- df$CO_ENTIDADE
-      
-      dados <- dados_escola_reativo()
-      sel <- tryCatch({
-        # Para cada concorrente selecionado, encontrar o display_name correspondente
-        concorrentes_atuais <- dados$lista_concorrentes$id_escola
-        matches <- df$display_name[df$CO_ENTIDADE %in% concorrentes_atuais]
-        as.character(matches)
-      }, error = function(e) NULL)
-      
-      updateSelectizeInput(session,
-                           "selecao_concorrentes",
-                           choices = choices,
-                           selected = sel,
-                           server = TRUE
+      updateSelectizeInput(
+        session, "selecao_concorrentes",
+        choices = opcoes_completas,
+        selected = selecionados_atuais,
+        server = TRUE
       )
     })
     
     observeEvent(input$btn_atualizar_analise, {
       req(input$selecao_concorrentes)
-      showNotification("Atualizando e salvando nova seleção de concorrentes...", type = "message", duration = 5)
+      showNotification("Recriando análise completa com novos concorrentes...", type = "message", duration = 8)
       
-      dados_atuais <- dados_escola_reativo(); req(dados_atuais)
-      codinep_ch <- as.character(codinep)
-      
-      # input$selecao_concorrentes já contém os CO_ENTIDADE (valores)
-      # porque usamos setNames(df$CO_ENTIDADE, df$display_name)
-      selected_ids <- input$selecao_concorrentes
-      
+      selected_ids <- as.character(input$selecao_concorrentes)
       save_concorrentes_selecionados(codinep, selected_ids)
       
-      novos_proc <- reprocessar_dados_concorrentes(
-        codinep = codinep_ch,
-        ids_concorrentes = as.character(selected_ids),
-        id_municipio = dados_atuais$id_municipio
+      # CHAMA A FUNÇÃO MESTRA PARA RECRIAR O OBJETO .RDS DO ZERO
+      novos_dados_completos <- preprocessar_escola(
+        codinep = codinep,
+        concorrentes_custom = selected_ids
       )
       
-      build_concorrentes_sf <- function(ids_sel, codinep_ch, escola_lon = NA_real_, escola_lat = NA_real_) {
-        # ... (mantenha esta função como estava) ...
-      }
-      
-      conc_sf <- build_concorrentes_sf(
-        ids_sel = as.character(selected_ids),
-        codinep_ch = codinep_ch,
-        escola_lon = suppressWarnings(as.numeric(dados_atuais$longitude)),
-        escola_lat = suppressWarnings(as.numeric(dados_atuais$latitude))
-      )
-      
-      dados_atuais$lista_concorrentes <- conc_sf
-      dados_finais <- c(
-        dados_atuais[c("id_escola","nome_escola","id_municipio","nome_municipio","latitude","longitude","lista_concorrentes","data_extracao")],
-        novos_proc
-      )
-      
-      caminho_arquivo <- file.path("data", "escolas", paste0(codinep_ch, ".rds"))
-      saveRDS(dados_finais, caminho_arquivo)
-      dados_escola_reativo(dados_finais)
+      dados_escola_reativo(novos_dados_completos)
+      dados_concorrentes_individuais(novos_dados_completos$dados_concorrentes_individualizados)
       
       showNotification("Análise atualizada com sucesso!", type = "message", duration = 3)
     })
     
     observeEvent(input$btn_restaurar_padrao, {
-      showNotification("Restaurando análise para os 5 concorrentes mais próximos...", type = "message", duration = 3)
-      
-      # Para restaurar padrão, passamos character(0) para limpar a seleção personalizada
+      showNotification("Restaurando e reprocessando para os 5 concorrentes padrão...", type = "message", duration = 8)
       save_concorrentes_selecionados(codinep, character(0))
       
-      dados_padrao_originais <- dados_escola_padrao(); req(dados_padrao_originais)
-      codinep_ch <- as.character(codinep)
-      ids_concorrentes_padrao <- as.character(dados_padrao_originais$lista_concorrentes$id_escola)
+      dados_padrao_reprocessados <- preprocessar_escola(codinep = codinep)
       
-      # Atualiza o selectize para mostrar os concorrentes padrão
-      updateSelectizeInput(session, "selecao_concorrentes", selected = ids_concorrentes_padrao)
-      
-      dados_reprocessados_padrao <- reprocessar_dados_concorrentes(
-        codinep = codinep_ch,
-        ids_concorrentes = ids_concorrentes_padrao,
-        id_municipio = dados_padrao_originais$id_municipio
-      )
-      
-      conc_sf <- build_concorrentes_sf(ids_concorrentes_padrao, codinep_ch)
-      
-      dados_finais_padrao <- c(
-        list(
-          id_escola = dados_padrao_originais$id_escola,
-          nome_escola = dados_padrao_originais$nome_escola,
-          id_municipio = dados_padrao_originais$id_municipio,
-          nome_municipio = dados_padrao_originais$nome_municipio,
-          latitude = dados_padrao_originais$latitude,
-          longitude = dados_padrao_originais$longitude,
-          lista_concorrentes = conc_sf,
-          data_extracao = Sys.time()
-        ),
-        dados_reprocessados_padrao
-      )
-      
-      caminho_arquivo <- file.path("data", "escolas", paste0(codinep_ch, ".rds"))
-      saveRDS(dados_finais_padrao, caminho_arquivo)
-      dados_escola_reativo(dados_finais_padrao)
+      dados_escola_reativo(dados_padrao_reprocessados)
+      dados_concorrentes_individuais(dados_padrao_reprocessados$dados_concorrentes_individualizados)
+      dados_escola_padrao(dados_padrao_reprocessados)
     })
+    
+    # --- RENDERIZAÇÃO DOS ELEMENTOS DA UI ---
     
     criar_caixa_kpi <- function(dados_segmento) {
       valor1 <- dados_segmento$valor_ano_1
       valor2 <- dados_segmento$valor_ano_2
       taxa <- dados_segmento$taxa_de_variacao
-      
-      cor_taxa <- if (is.na(taxa) || taxa == "N/A") {
-        "#6c757d"
-      } else if (as.numeric(sub("%", "", taxa)) > 0) {
-        "#198754"
-      } else {
-        "#dc3545"
-      }
-      
+      cor_taxa <- if (is.na(taxa) || taxa == "N/A") "#6c757d" else if (as.numeric(sub("%", "", taxa)) > 0) "#198754" else "#dc3545"
       div(class = "stat-card",
-          tagList(
-            h5(dados_segmento$label),
-            p(paste("2023:", valor1, "| 2024:", valor2)),
-            h4(style = paste0("color:", cor_taxa, ";"), taxa)
-          )
-      )
+          tagList(h5(dados_segmento$label), p(paste("2023:", valor1, "| 2024:", valor2)), h4(style = paste0("color:", cor_taxa, ";"), taxa)))
     }
     
     output$kpis_concorrentes_detalhados <- renderUI({
@@ -419,7 +226,7 @@ mod_escola_server <- function(id, user, codinep) {
               filter(id_escola == id_conc)
             
             nome_concorrente <- get_nome_concorrente(id_conc)
-            distancia <- ifelse(!is.na(concorrente_info$dist_metros), 
+            distancia <- ifelse("dist_metros" %in% names(concorrente_info) && !is.na(concorrente_info$dist_metros), 
                                 paste(round(concorrente_info$dist_metros), "m de distância"), 
                                 "Distância não disponível")
             
@@ -429,7 +236,6 @@ mod_escola_server <- function(id, user, codinep) {
                     p(class = "concorrente-distancia",
                       icon("map-marker-alt"), distancia)
                 ),
-                
                 div(class = "concorrente-content",
                     div(class = "concorrente-stats",
                         lapply(dados_indiv[[id_conc]], function(segmento) {
@@ -437,10 +243,8 @@ mod_escola_server <- function(id, user, codinep) {
                             div(class = "stat-item",
                                 div(class = "stat-label", segmento$label),
                                 div(class = "stat-values",
-                                    p(class = "stat-value", 
-                                      paste("2023:", format(segmento$valor_ano_1, big.mark = ".", decimal.mark = ","))),
-                                    p(class = "stat-value", 
-                                      paste("2024:", format(segmento$valor_ano_2, big.mark = ".", decimal.mark = ",")))
+                                    p(class = "stat-value", paste("2023:", format(segmento$valor_ano_1, big.mark = ".", decimal.mark = ","))),
+                                    p(class = "stat-value", paste("2024:", format(segmento$valor_ano_2, big.mark = ".", decimal.mark = ",")))
                                 ),
                                 p(class = "stat-variation",
                                   style = paste0("background-color:", 
@@ -464,52 +268,29 @@ mod_escola_server <- function(id, user, codinep) {
     })
     
     output$kpis_escola <- renderUI({
-      dados <- dados_escola_reativo()
-      req(dados)
+      dados <- dados_escola_reativo(); req(dados, dados$dados_propria_escola)
       lapply(dados$dados_propria_escola, criar_caixa_kpi)
     })
     
     output$kpis_mercado <- renderUI({
-      dados <- dados_escola_reativo()
-      req(dados)
+      dados <- dados_escola_reativo(); req(dados, dados$dados_mercado_municipio)
       lapply(dados$dados_mercado_municipio, criar_caixa_kpi)
     })
     
     output$kpis_concorrentes <- renderUI({
-      dados <- dados_escola_reativo()
-      req(dados)
+      dados <- dados_escola_reativo(); req(dados, dados$dados_concorrentes_proximos)
       lapply(dados$dados_concorrentes_proximos, criar_caixa_kpi)
     })
     
-    output$tabela_concorrentes <- DT::renderDataTable({
-      dados <- dados_escola_reativo(); req(dados, dados$lista_concorrentes)
-      df <- dados$lista_concorrentes
-      if (inherits(df, "sf")) df <- sf::st_drop_geometry(df)
-      tabela <- df %>%
-        dplyr::select(`Cód. INEP` = id_escola, `Nome da Escola` = nome_escola,
-                      `Distância (m)` = dplyr::any_of("dist_metros"))
-      DT::datatable(tabela, options = list(pageLength = 10, scrollY = "450px"))
-    })
-    
-    output$mapa_concorrentes <- leaflet::renderLeaflet({
-      req(dados_escola_reativo)
-      dados <- dados_escola_reativo(); req(dados)
-      
-      # ... (mantenha a função do mapa como estava) ...
-    })
-    
-    # --- Lógica para Visão Consolidada ---
     output$ui_desempenho_areas_consolidado <- renderUI({
-      ns <- session$ns
       fluidRow(
-        column(7, h4("Comparativo de Médias por Área"), plotly::plotlyOutput(ns("plot_enem_areas_consolidado"))),
-        column(5, h4("Tabela de Médias"), DT::dataTableOutput(ns("tabela_enem_areas_consolidado")))
+        column(7, plotly::plotlyOutput(ns("plot_enem_areas_consolidado"))),
+        column(5, DT::dataTableOutput(ns("tabela_enem_areas_consolidado")))
       )
     })
     
     output$plot_enem_areas_consolidado <- plotly::renderPlotly({
-      dados <- dados_escola_reativo()
-      req(dados, dados$dados_enem_areas)
+      dados <- dados_escola_reativo(); req(dados, dados$dados_enem_areas)
       df_enem <- dados$dados_enem_areas %>%
         filter(tipo %in% c("Sua Escola", "Média Concorrentes", "Média Municipal"))
       
@@ -518,36 +299,25 @@ mod_escola_server <- function(id, user, codinep) {
     })
     
     output$tabela_enem_areas_consolidado <- DT::renderDataTable({
-      dados <- dados_escola_reativo()
-      req(dados, dados$dados_enem_areas)
-      
+      dados <- dados_escola_reativo(); req(dados, dados$dados_enem_areas)
       df <- dados$dados_enem_areas %>%
         filter(tipo %in% c("Sua Escola", "Média Concorrentes", "Média Municipal")) %>%
         mutate(nota = round(nota, 1)) %>%
         select(Área = area, Categoria = escola_label, Nota = nota) %>%
         pivot_wider(names_from = Categoria, values_from = Nota)
       
-      DT::datatable(
-        df,
-        options = list(
-          dom = 't',
-          pageLength = 10
-        ),
-        rownames = FALSE
-      )
+      DT::datatable(df, options = list(dom = 't', pageLength = 10), rownames = FALSE)
     })
     
     output$ui_desempenho_redacao_consolidado <- renderUI({
-      ns <- session$ns
       fluidRow(
-        column(7, h4("Detalhamento da Nota de Redação"), plotly::plotlyOutput(ns("plot_enem_redacao_consolidado"))),
-        column(5, h4("Tabela de Competências"), DT::dataTableOutput(ns("tabela_enem_redacao_consolidado")))
+        column(7, plotly::plotlyOutput(ns("plot_enem_redacao_consolidado"))),
+        column(5, DT::dataTableOutput(ns("tabela_enem_redacao_consolidado")))
       )
     })
     
     output$plot_enem_redacao_consolidado <- plotly::renderPlotly({
-      dados <- dados_escola_reativo()
-      req(dados, dados$dados_enem_redacao)
+      dados <- dados_escola_reativo(); req(dados, dados$dados_enem_redacao)
       df_redacao <- dados$dados_enem_redacao %>%
         filter(tipo %in% c("Sua Escola", "Média Concorrentes", "Média Municipal"))
       
@@ -556,37 +326,25 @@ mod_escola_server <- function(id, user, codinep) {
     })
     
     output$tabela_enem_redacao_consolidado <- DT::renderDataTable({
-      dados <- dados_escola_reativo()
-      req(dados, dados$dados_enem_redacao)
-      
+      dados <- dados_escola_reativo(); req(dados, dados$dados_enem_redacao)
       df <- dados$dados_enem_redacao %>%
         filter(tipo %in% c("Sua Escola", "Média Concorrentes", "Média Municipal")) %>%
         mutate(nota = round(nota, 1)) %>%
         select(Competência = competencia, Categoria = escola_label, Nota = nota) %>%
         pivot_wider(names_from = Categoria, values_from = Nota)
       
-      DT::datatable(
-        df,
-        options = list(
-          dom = 't',
-          pageLength = 10
-        ),
-        rownames = FALSE
-      )
+      DT::datatable(df, options = list(dom = 't', pageLength = 10), rownames = FALSE)
     })
     
-    # --- Lógica para Visão Detalhada ---
     output$ui_desempenho_areas_detalhado <- renderUI({
-      ns <- session$ns
       fluidRow(
-        column(7, h4("Comparativo de Médias por Área"), plotly::plotlyOutput(ns("plot_enem_areas_detalhado"))),
-        column(5, h4("Tabela de Médias"), DT::dataTableOutput(ns("tabela_enem_areas_detalhado")))
+        column(7, plotly::plotlyOutput(ns("plot_enem_areas_detalhado"))),
+        column(5, DT::dataTableOutput(ns("tabela_enem_areas_detalhado")))
       )
     })
     
     output$plot_enem_areas_detalhado <- plotly::renderPlotly({
-      dados <- dados_escola_reativo()
-      req(dados, dados$dados_enem_areas)
+      dados <- dados_escola_reativo(); req(dados, dados$dados_enem_areas)
       df_enem <- dados$dados_enem_areas %>%
         filter(tipo %in% c("Sua Escola", "Concorrente"))
       
@@ -595,36 +353,25 @@ mod_escola_server <- function(id, user, codinep) {
     })
     
     output$tabela_enem_areas_detalhado <- DT::renderDataTable({
-      dados <- dados_escola_reativo()
-      req(dados, dados$dados_enem_areas)
-      
+      dados <- dados_escola_reativo(); req(dados, dados$dados_enem_areas)
       df <- dados$dados_enem_areas %>%
         filter(tipo %in% c("Sua Escola", "Concorrente")) %>%
         mutate(nota = round(nota, 1)) %>%
         select(Área = area, Escola = escola_label, Nota = nota) %>%
         pivot_wider(names_from = Escola, values_from = Nota)
       
-      DT::datatable(
-        df,
-        options = list(
-          dom = 't',
-          pageLength = 10
-        ),
-        rownames = FALSE
-      )
+      DT::datatable(df, options = list(dom = 't', pageLength = 10), rownames = FALSE)
     })
     
     output$ui_desempenho_redacao_detalhado <- renderUI({
-      ns <- session$ns
       fluidRow(
-        column(7, h4("Detalhamento da Nota de Redação"), plotly::plotlyOutput(ns("plot_enem_redacao_detalhado"))),
-        column(5, h4("Tabela de Competências"), DT::dataTableOutput(ns("tabela_enem_redacao_detalhado")))
+        column(7, plotly::plotlyOutput(ns("plot_enem_redacao_detalhado"))),
+        column(5, DT::dataTableOutput(ns("tabela_enem_redacao_detalhado")))
       )
     })
     
     output$plot_enem_redacao_detalhado <- plotly::renderPlotly({
-      dados <- dados_escola_reativo()
-      req(dados, dados$dados_enem_redacao)
+      dados <- dados_escola_reativo(); req(dados, dados$dados_enem_redacao)
       df_redacao <- dados$dados_enem_redacao %>%
         filter(tipo %in% c("Sua Escola", "Concorrente"))
       
@@ -633,68 +380,16 @@ mod_escola_server <- function(id, user, codinep) {
     })
     
     output$tabela_enem_redacao_detalhado <- DT::renderDataTable({
-      dados <- dados_escola_reativo()
-      req(dados, dados$dados_enem_redacao)
-      
+      dados <- dados_escola_reativo(); req(dados, dados$dados_enem_redacao)
       df <- dados$dados_enem_redacao %>%
         filter(tipo %in% c("Sua Escola", "Concorrente")) %>%
         mutate(nota = round(nota, 1)) %>%
         select(Competência = competencia, Escola = escola_label, Nota = nota) %>%
         pivot_wider(names_from = Escola, values_from = Nota)
       
-      DT::datatable(
-        df,
-        options = list(
-          dom = 't',
-          pageLength = 10
-        ),
-        rownames = FALSE
-      )
+      DT::datatable(df, options = list(dom = 't', pageLength = 10), rownames = FALSE)
     })
     
-
-    
-    
-    output$dl_onepager <- downloadHandler(
-      filename = function() {
-        d <- dados_escola_reativo()
-        paste0("Relatorio_", d$id_escola, "_", format(Sys.Date(), "%Y-%m-%d"), ".pdf")
-      },
-      content = function(file) {
-        d <- dados_escola_reativo()
-        shiny::validate(shiny::need(!is.null(d), "Dados não carregados."))
-        
-        tryCatch({
-          build_onepager(dados = d, out_pdf = file)
-          if (!file.exists(file)) stop("Falha ao criar o PDF.")
-        }, error = function(e) {
-          showNotification(
-            paste("Erro ao gerar o relatório PDF:", conditionMessage(e)),
-            type = "error", duration = 8
-          )
-          stop(e)
-        })
-      }
-    )
-    # --- INFRAESTRUTURA: Diagnóstico e Correção ---
-    
-    # Debug para verificar os dados
-    observe({
-      dados <- dados_escola_reativo()
-      if (!is.null(dados)) {
-        cat("=== DEBUG INFRAESTRUTURA ===\n")
-        cat("Dados carregados: ", !is.null(dados), "\n")
-        cat("Dados infraestrutura existe: ", !is.null(dados$dados_infraestrutura), "\n")
-        
-        if (!is.null(dados$dados_infraestrutura)) {
-          cat("Tipo: ", class(dados$dados_infraestrutura), "\n")
-          cat("Estrutura: \n")
-          print(str(dados$dados_infraestrutura))
-          cat("Colunas: ", names(dados$dados_infraestrutura), "\n")
-        }
-        cat("=============================\n")
-      }
-    })
     
     # --- INFRAESTRUTURA: Versão Corrigida com Identidade Visual ---
     # --- INFRAESTRUTURA: Versão Corrigida (SEM ERROS) ---
@@ -1050,27 +745,52 @@ mod_escola_server <- function(id, user, codinep) {
         )
       })
     })
-
-    # Reactive value para o nome da escola
-    nome_exportado <- reactiveVal(NULL)
     
-    # Quando os dados carregarem, captura o nome
-    observe({
-      dados <- dados_escola_reativo()
-      if (!is.null(dados) && !is.null(dados$nome_escola)) {
-        nome_exportado(dados$nome_escola)
+    # Utilitário para garantir que o builder esteja carregado
+    load_onepager_builder <- function() {
+      src <- here::here("utils", "onepager_build.R")
+      if (!file.exists(src)) stop("Arquivo utils/onepager_build.R não encontrado.")
+      source(src, local = TRUE) # expõe build_onepager() no ambiente atual
+      if (!exists("build_onepager")) stop("Função build_onepager() não disponível após source().")
+    }
+    
+    output$dl_onepager <- downloadHandler(
+      filename = function() {
+        d <- dados_escola_reativo()
+        paste0("Relatorio_", d$id_escola, "_", format(Sys.Date(), "%Y-%m-%d"), ".pdf")
+      },
+      content = function(file) {
+        # captura dados
+        d <- dados_escola_reativo()
+        shiny::validate(shiny::need(!is.null(d), "Dados não carregados."))
+        
+        # carrega o builder
+        load_onepager_builder()
+        
+        # gera PDF diretamente no 'file' fornecido pelo Shiny
+        tryCatch({
+          build_onepager(dados = d, out_pdf = file)
+          if (!file.exists(file)) stop("Falha ao criar o PDF.")
+        }, error = function(e) {
+          showNotification(
+            paste("Erro ao gerar o relatório PDF:", conditionMessage(e)),
+            type = "error", duration = 8
+          )
+          stop(e)
+        })
       }
-    })
+    )
     
-    # Exporta o nome para o app principal
+    
+    # Exporta o nome da escola para o cabeçalho principal
     return(
       list(
-        nome_escola = reactive({ nome_exportado() })
+        nome_escola = reactive({ 
+          d <- dados_escola_reativo()
+          d$nome_escola %||% ""
+        })
       )
     )
-
     
   })
 }
-    
-    
